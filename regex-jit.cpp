@@ -1,6 +1,10 @@
 #include <cassert>
 #include <cstdint>
 #include <format>
+#include <iostream>
+#include <memory>
+#include <optional>
+#include <set>
 #include <stdexcept>
 #include <string_view>
 #include <sys/types.h>
@@ -10,6 +14,12 @@
 using namespace std::literals;
 
 namespace {
+
+template <typename... Ts> struct Overload : Ts... {
+  using Ts::operator()...;
+};
+
+template <class... Ts> Overload(Ts...) -> Overload<Ts...>;
 
 // https://www.rfc-editor.org/rfc/rfc9485.pdf
 struct Branch;
@@ -22,56 +32,130 @@ struct Codepoint {
 };
 
 struct Atom {
-  struct Any {};
+  struct Placeholder {};
+
+  struct Any {
+    static constexpr auto name = "."sv;
+  };
 
   // Letters
-  struct Letter {};         // L
-  struct LetterLower {};    // Ll
-  struct LetterModifier {}; // Lm
-  struct LetterOther {};    // Lo
-  struct LetterTitle {};    // Lt
-  struct LetterUpper {};    // Lu
+  struct Letter {
+    static constexpr auto name = "{L}"sv;
+  };
+  struct LetterLower {
+    static constexpr auto name = "{Ll}"sv;
+  };
+  struct LetterModifier {
+    static constexpr auto name = "{Ll}"sv;
+  };
+  struct LetterOther {
+    static constexpr auto name = "{Lo}"sv;
+  };
+  struct LetterTitle {
+    static constexpr auto name = "{Lt}"sv;
+  };
+  struct LetterUpper {
+    static constexpr auto name = "{Lu}"sv;
+  };
 
   // Marks
-  struct Mark {};                 // M
-  struct MarkSpacingCombining {}; // Mc
-  struct MarkEnclosing {};        // Me
-  struct MarkNonSpacing {};       // Mn
+  struct Mark {
+    static constexpr auto name = "{M}"sv;
+  };
+  struct MarkSpacingCombining {
+    static constexpr auto name = "{Mc}"sv;
+  };
+  struct MarkEnclosing {
+    static constexpr auto name = "{Me}"sv;
+  };
+  struct MarkNonSpacing {
+    static constexpr auto name = "{Mn}"sv;
+  };
 
   // Numbers
-  struct Number {};        // N
-  struct NumberDecimal {}; // Nd
-  struct NumberLetter {};  // Nl
-  struct NumberOther {};   // No
+  struct Number {
+    static constexpr auto name = "{N}"sv;
+  };
+  struct NumberDecimal {
+    static constexpr auto name = "{Nd}"sv;
+  };
+  struct NumberLetter {
+    static constexpr auto name = "{Nl}"sv;
+  };
+  struct NumberOther {
+    static constexpr auto name = "{No}"sv;
+  };
 
   // Punctuation
-  struct Punctuation {};             // P
-  struct PunctuationConnector {};    // Pc
-  struct PunctuationDash {};         // Pd
-  struct PunctuationClose {};        // Pe
-  struct PunctuationFinalQuote {};   // Pf
-  struct PunctuationInitialQuote {}; // Pi
-  struct PunctuationOther {};        // Po
-  struct PunctuationOpen {};         // Ps
+  struct Punctuation {
+    static constexpr auto name = "{P}"sv;
+  };
+  struct PunctuationConnector {
+    static constexpr auto name = "{Pc}"sv;
+  };
+  struct PunctuationDash {
+    static constexpr auto name = "{Pd}"sv;
+  };
+  struct PunctuationClose {
+    static constexpr auto name = "{Pe}"sv;
+  };
+  struct PunctuationFinalQuote {
+    static constexpr auto name = "{Pf}"sv;
+  };
+  struct PunctuationInitialQuote {
+    static constexpr auto name = "{Pi}"sv;
+  };
+  struct PunctuationOther {
+    static constexpr auto name = "{Po}"sv;
+  };
+  struct PunctuationOpen {
+    static constexpr auto name = "{Ps}"sv;
+  };
 
   // Separators
-  struct Separator {};          // Z
-  struct SeparatorLine {};      // Zl
-  struct SeparatorParagraph {}; // Zp
-  struct SeparatorSpace {};     // Zs
+  struct Separator {
+    static constexpr auto name = "{Z}"sv;
+  };
+  struct SeparatorLine {
+    static constexpr auto name = "{Zl}"sv;
+  };
+  struct SeparatorParagraph {
+    static constexpr auto name = "{Zp}"sv;
+  };
+  struct SeparatorSpace {
+    static constexpr auto name = "{Zs}"sv;
+  };
 
   // Symbols
-  struct Symbol {};         // S
-  struct SymbolCurrency {}; // Sc
-  struct SymbolModifier {}; // Sk
-  struct SymbolOther {};    // So
+  struct Symbol {
+    static constexpr auto name = "{S}"sv;
+  };
+  struct SymbolCurrency {
+    static constexpr auto name = "{Sc}"sv;
+  };
+  struct SymbolModifier {
+    static constexpr auto name = "{Sk}"sv;
+  };
+  struct SymbolOther {
+    static constexpr auto name = "{So}"sv;
+  };
 
   // Others
-  struct Other {};             // C
-  struct OtherControl {};      // Cc
-  struct OtherFormat {};       // Cf
-  struct OtherNoncharacter {}; // Cn
-  struct OtherPrivateUse {};   // Co
+  struct Other {
+    static constexpr auto name = "{C}"sv;
+  };
+  struct OtherControl {
+    static constexpr auto name = "{Cc}"sv;
+  };
+  struct OtherFormat {
+    static constexpr auto name = "{Cf}"sv;
+  };
+  struct OtherNoncharacter {
+    static constexpr auto name = "{Cn}"sv;
+  };
+  struct OtherPrivateUse {
+    static constexpr auto name = "{Co}"sv;
+  };
 
   // Classes
 
@@ -104,8 +188,8 @@ struct Atom {
     bool is_complement;
   };
 
-  using AtomVariant =
-      std::variant<Regex, Any, Codepoint, CharClass, CharClassExpr>;
+  using AtomVariant = std::variant<Placeholder, Regex, Any, Codepoint,
+                                   CharClass, CharClassExpr>;
 
   AtomVariant type;
 };
@@ -167,11 +251,11 @@ struct Cursor {
     // Failed! Throw an error
     if (offset >= text.size()) {
       throw std::runtime_error(
-          std::format("Expected '}}' at offset {}, got EOF", offset));
+          std::format("Expected '{}' at offset {}, got EOF", to_eat, offset));
     }
 
-    throw std::runtime_error(
-        std::format("Expected '}}' at offset {}, got '{}'", offset, peek()));
+    throw std::runtime_error(std::format("Expected '{}' at offset {}, got '{}'",
+                                         to_eat, offset, peek()));
   }
 
   constexpr auto try_eat(char to_eat) -> bool {
@@ -598,12 +682,20 @@ auto parse_atom(Cursor &cursor) -> Atom {
     return {{parse_character_class_expression(cursor)}};
   }
 
+  // Any '.'
+  if (cursor.try_eat('.')) {
+    return {Atom::Any{}};
+  }
+
   // Normal character
   return std::visit([&](auto value) -> Atom { return {{value}}; },
                     parse_char_or_char_class(cursor));
 }
 
 auto parse_quantifier(Cursor &cursor) -> Quantifier {
+  if (cursor.is_at_end()) {
+    return {Quantifier::Exactly(1)};
+  }
   switch (cursor.peek()) {
   default:
     return {Quantifier::Exactly(1)};
@@ -646,7 +738,7 @@ auto parse_piece(Cursor &cursor) -> Piece {
 
 auto parse_branch(Cursor &cursor) -> Branch {
   Branch result;
-  while (cursor.is_next_or_end('|')) {
+  while (not(cursor.is_next_or_end('|') || cursor.is_next_or_end(')'))) {
     result.pieces.push_back(parse_piece(cursor));
   }
   return result;
@@ -660,4 +752,218 @@ auto parse_regex(Cursor &cursor) -> Regex {
   return result;
 }
 } // namespace parsing
+
+namespace matching {
+struct State {
+  Atom condition;
+  std::set<State *> output_states;
+  size_t last_added_at_index;
+};
+
+struct Fragment {
+  std::set<State *> input_states;
+  std::set<State *> output_states;
+};
+
+using StateList = std::vector<std::unique_ptr<matching::State>>;
+
+auto allocate_state(StateList &all_states, Atom atom) -> State * {
+  assert(not std::holds_alternative<Regex>(atom.type));
+
+  all_states.emplace_back(new State{atom, {}, 0});
+  return all_states.back().get();
+}
+
+auto build_state_tree(Regex const &regex, StateList &all_states,
+                      std::set<State *> input_states) -> Fragment {
+
+  Fragment result{};
+  for (const auto &branch : regex.branches) {
+    Fragment previous_fragment;
+    previous_fragment.output_states = input_states;
+
+    for (const auto &piece : branch.pieces) {
+      auto get_fragment = [&]() -> Fragment {
+        if (std::holds_alternative<Regex>(piece.atom.type)) {
+          // Complex regex, all inputs are mapped recursively
+          auto nested_regex = std::get<Regex>(piece.atom.type);
+          return build_state_tree(nested_regex, all_states,
+                                  previous_fragment.output_states);
+        }
+
+        // Simple comparison
+        auto *state = allocate_state(all_states, {piece.atom});
+        return {{state}, {state}};
+      };
+
+      Fragment fragment;
+
+      auto merge = [&] {
+        // Merge into one larger fragment
+        for (auto *output_state : previous_fragment.output_states) {
+          for (auto *input_state : fragment.input_states) {
+            output_state->output_states.insert(input_state);
+          }
+        }
+
+        previous_fragment.output_states = fragment.output_states;
+      };
+
+      std::visit(
+          Overload{
+              [&](Quantifier::NoneOrMore) {
+                // previous -> current ->  next
+                //           |----<>---|
+                fragment = get_fragment();
+                for (auto *output_state : fragment.output_states) {
+                  for (auto *input_state : fragment.input_states) {
+                    output_state->output_states.insert(input_state);
+                  }
+                }
+                for (auto *output_state : previous_fragment.output_states) {
+                  fragment.output_states.insert(output_state);
+                }
+                merge();
+              },
+              [&](Quantifier::OneOrMore) {
+                // previous -> current ->  next
+                //           |----<----|
+                fragment = get_fragment();
+                for (auto *output_state : fragment.output_states) {
+                  for (auto *input_state : fragment.input_states) {
+                    output_state->output_states.insert(input_state);
+                  }
+                }
+                merge();
+              },
+              [&](Quantifier::MaybeOne) {
+                // previous -> current ->  next
+                //           |---->----|
+                fragment = get_fragment();
+                for (auto *output_state : previous_fragment.output_states) {
+                  fragment.output_states.insert(output_state);
+                }
+                merge();
+              },
+              [&](Quantifier::Range range) {
+                // previous -> n1 -> n2 -> n3 -> n4 ->  next
+                //                      |-->--|-->--|
+                for (size_t i = 0; i < range.lower; i += 1) {
+                  fragment = get_fragment();
+                  merge();
+                }
+
+                std::set<State *> additional_output_states;
+                for (size_t i = range.lower; i < range.upper; i += 1) {
+                  for (auto *state : previous_fragment.output_states) {
+                    additional_output_states.insert(state);
+                  }
+                  fragment = get_fragment();
+                  merge();
+                }
+                for (auto *state : additional_output_states) {
+                  previous_fragment.output_states.insert(state);
+                }
+              },
+              [&](Quantifier::Exactly exactly) {
+                // previous -> n1 -> n2 -> nn ->  next
+                for (size_t i = 0; i < exactly.count; i += 1) {
+                  fragment = get_fragment();
+                  merge();
+                }
+              }},
+          piece.quantifier.type);
+    }
+
+    // Merge into the overall fragment
+    for (auto *state : previous_fragment.input_states) {
+      result.input_states.insert(state);
+    }
+    for (auto *state : previous_fragment.output_states) {
+      result.output_states.insert(state);
+    }
+  }
+  return result;
+}
+
+auto format_atom(Atom atom) -> std::string {
+  return std::visit(
+      Overload([](Atom::Any) { return std::string{Atom::Any::name}; },
+               [](Codepoint codepoint) {
+                 return std::format("{}", (char)codepoint.value);
+               },
+               [](Atom::CharClass c) {
+                 auto prefix = c.is_complement ? "P"sv : "p"sv;
+                 auto name = std::visit(
+                     [](auto c) { return std::string{c.name}; }, c.type);
+                 return std::format("{}{}", prefix, name);
+               },
+               [](Atom::CharClassExpr) {
+                 assert(!"Unreachable");
+                 return std::string{};
+               },
+               [](Atom::Placeholder) { return std::string{"Entry"}; },
+               [](Regex) {
+                 assert(!"Unreachable");
+                 return std::string{};
+               }),
+      atom.type);
+}
+
+auto format_state(State *state) -> std::string {
+  return std::format("state_{}", (intptr_t)state);
+}
+
+auto output_subgraph(std::set<State *>& already_graphed, State *to_graph)
+    -> void {
+  already_graphed.insert(to_graph);
+  for (auto *state : to_graph->output_states) {
+    std::cout << format_state(to_graph) << " -> " << format_state(state)
+              << "\n";
+
+    if (already_graphed.find(state) == already_graphed.end()) {
+      output_subgraph(already_graphed, state);
+    }
+  }
+}
+
+auto output_graph(const StateList &all_states, State *entry_state,
+                  const Fragment &fragment) -> void {
+
+  std::cout << "digraph {\n";
+
+  for (auto &state : all_states) {
+    std::cout << std::format("{} [label=\"{}\"]\n", format_state(state.get()),
+                             format_atom(state->condition));
+  }
+
+  std::set<State *> already_graphed;
+  output_subgraph(already_graphed, entry_state);
+
+  for (auto *match_state : fragment.output_states) {
+    std::cout << format_state(match_state) << "-> Match" << "\n";
+  }
+
+  std::cout << "}" << std::endl;
+}
+} // namespace matching
 } // namespace
+
+int main(int argc, char *argv[]) {
+  assert(argc == 2);
+  std::string_view regex_string = argv[1];
+
+  // Parse
+  parsing::Cursor cursor{.text = regex_string, .offset = 0};
+  auto regex = parsing::parse_regex(cursor);
+
+  // Compile
+  std::vector<std::unique_ptr<matching::State>> all_states;
+  auto entry_state =
+      matching::allocate_state(all_states, {Atom::Placeholder{}});
+  auto regex_fragment =
+      matching::build_state_tree(regex, all_states, {entry_state});
+
+  // Graph
+  matching::output_graph(all_states, entry_state, regex_fragment);
+}

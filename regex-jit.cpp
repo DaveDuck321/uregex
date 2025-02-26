@@ -873,6 +873,10 @@ auto build_state_tree(Regex const &regex, StateList &all_states,
                 }
               }},
           piece.quantifier.type);
+
+        if (previous_fragment.input_states.empty()) {
+            previous_fragment.input_states = fragment.input_states;
+        }
     }
 
     // Merge into the overall fragment

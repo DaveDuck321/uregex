@@ -1,13 +1,14 @@
 #include <cassert>
+#include <cctype>
 #include <cstdint>
 #include <format>
 #include <iostream>
 #include <memory>
-#include <optional>
 #include <set>
 #include <stdexcept>
 #include <string_view>
 #include <sys/types.h>
+#include <type_traits>
 #include <variant>
 #include <vector>
 
@@ -20,6 +21,12 @@ template <typename... Ts> struct Overload : Ts... {
 };
 
 template <class... Ts> Overload(Ts...) -> Overload<Ts...>;
+
+static constexpr auto ascii_toupper(std::string &input) -> void {
+  for (char &character : input) {
+    input = std::toupper(character);
+  }
+}
 
 // https://www.rfc-editor.org/rfc/rfc9485.pdf
 struct Branch;
@@ -38,134 +45,149 @@ struct Atom {
     static constexpr auto name = "."sv;
   };
 
+  struct Unicode {
+    static constexpr auto category = "p"sv;
+  };
+
   // Letters
-  struct Letter {
+  struct Letter : Unicode {
     static constexpr auto name = "{L}"sv;
   };
-  struct LetterLower {
+  struct LetterLower : Unicode {
     static constexpr auto name = "{Ll}"sv;
   };
-  struct LetterModifier {
+  struct LetterModifier : Unicode {
     static constexpr auto name = "{Ll}"sv;
   };
-  struct LetterOther {
+  struct LetterOther : Unicode {
     static constexpr auto name = "{Lo}"sv;
   };
-  struct LetterTitle {
+  struct LetterTitle : Unicode {
     static constexpr auto name = "{Lt}"sv;
   };
-  struct LetterUpper {
+  struct LetterUpper : Unicode {
     static constexpr auto name = "{Lu}"sv;
   };
 
   // Marks
-  struct Mark {
+  struct Mark : Unicode {
     static constexpr auto name = "{M}"sv;
   };
-  struct MarkSpacingCombining {
+  struct MarkSpacingCombining : Unicode {
     static constexpr auto name = "{Mc}"sv;
   };
-  struct MarkEnclosing {
+  struct MarkEnclosing : Unicode {
     static constexpr auto name = "{Me}"sv;
   };
-  struct MarkNonSpacing {
+  struct MarkNonSpacing : Unicode {
     static constexpr auto name = "{Mn}"sv;
   };
 
   // Numbers
-  struct Number {
+  struct Number : Unicode {
     static constexpr auto name = "{N}"sv;
   };
-  struct NumberDecimal {
+  struct NumberDecimal : Unicode {
     static constexpr auto name = "{Nd}"sv;
   };
-  struct NumberLetter {
+  struct NumberLetter : Unicode {
     static constexpr auto name = "{Nl}"sv;
   };
-  struct NumberOther {
+  struct NumberOther : Unicode {
     static constexpr auto name = "{No}"sv;
   };
 
   // Punctuation
-  struct Punctuation {
+  struct Punctuation : Unicode {
     static constexpr auto name = "{P}"sv;
   };
-  struct PunctuationConnector {
+  struct PunctuationConnector : Unicode {
     static constexpr auto name = "{Pc}"sv;
   };
-  struct PunctuationDash {
+  struct PunctuationDash : Unicode {
     static constexpr auto name = "{Pd}"sv;
   };
-  struct PunctuationClose {
+  struct PunctuationClose : Unicode {
     static constexpr auto name = "{Pe}"sv;
   };
-  struct PunctuationFinalQuote {
+  struct PunctuationFinalQuote : Unicode {
     static constexpr auto name = "{Pf}"sv;
   };
-  struct PunctuationInitialQuote {
+  struct PunctuationInitialQuote : Unicode {
     static constexpr auto name = "{Pi}"sv;
   };
-  struct PunctuationOther {
+  struct PunctuationOther : Unicode {
     static constexpr auto name = "{Po}"sv;
   };
-  struct PunctuationOpen {
+  struct PunctuationOpen : Unicode {
     static constexpr auto name = "{Ps}"sv;
   };
 
   // Separators
-  struct Separator {
+  struct Separator : Unicode {
     static constexpr auto name = "{Z}"sv;
   };
-  struct SeparatorLine {
+  struct SeparatorLine : Unicode {
     static constexpr auto name = "{Zl}"sv;
   };
-  struct SeparatorParagraph {
+  struct SeparatorParagraph : Unicode {
     static constexpr auto name = "{Zp}"sv;
   };
-  struct SeparatorSpace {
+  struct SeparatorSpace : Unicode {
     static constexpr auto name = "{Zs}"sv;
   };
 
   // Symbols
-  struct Symbol {
+  struct Symbol : Unicode {
     static constexpr auto name = "{S}"sv;
   };
-  struct SymbolCurrency {
+  struct SymbolCurrency : Unicode {
     static constexpr auto name = "{Sc}"sv;
   };
-  struct SymbolModifier {
+  struct SymbolModifier : Unicode {
     static constexpr auto name = "{Sk}"sv;
   };
-  struct SymbolOther {
+  struct SymbolOther : Unicode {
     static constexpr auto name = "{So}"sv;
   };
 
   // Others
-  struct Other {
+  struct Other : Unicode {
     static constexpr auto name = "{C}"sv;
   };
-  struct OtherControl {
+  struct OtherControl : Unicode {
     static constexpr auto name = "{Cc}"sv;
   };
-  struct OtherFormat {
+  struct OtherFormat : Unicode {
     static constexpr auto name = "{Cf}"sv;
   };
-  struct OtherNoncharacter {
+  struct OtherNoncharacter : Unicode {
     static constexpr auto name = "{Cn}"sv;
   };
-  struct OtherPrivateUse {
+  struct OtherPrivateUse : Unicode {
     static constexpr auto name = "{Co}"sv;
   };
 
-  // Classes
+  // ASCII (maybe these should just be syntax for the unicode ones)
+  struct ASCIIDigit {
+    static constexpr auto category = "d"sv;
+  };
+
+  struct ASCIIWhitespace {
+    static constexpr auto category = "s"sv;
+  };
+  struct ASCIIAlphaNumeric {
+    static constexpr auto category = "w"sv;
+  };
 
   // TODO: combine negative + positive class variants into the atom variant...
   // does this make a difference?
   struct CharClass {
     using ClassVariant = std::variant<
-        Letter, LetterLower, LetterModifier, LetterOther, LetterTitle,
-        LetterUpper, Mark, MarkSpacingCombining, MarkEnclosing, MarkNonSpacing,
-        Number, NumberDecimal, NumberLetter, NumberOther, Punctuation,
+        ASCIIDigit, ASCIIWhitespace, ASCIIAlphaNumeric, Letter, LetterLower,
+        LetterModifier, LetterOther, LetterTitle, LetterUpper, Mark,
+        MarkSpacingCombining, MarkEnclosing, MarkNonSpacing, Number,
+        NumberDecimal, NumberLetter, NumberOther, Punctuation,
         PunctuationConnector, PunctuationDash, PunctuationClose,
         PunctuationFinalQuote, PunctuationInitialQuote, PunctuationOther,
         PunctuationOpen, Separator, SeparatorLine, SeparatorParagraph,
@@ -350,9 +372,10 @@ auto parse_utf8_char(Cursor &cursor) -> Codepoint {
       std::format("Invalid unicode encountered at offset: {}", cursor.offset));
 }
 
-auto parse_character_category(Cursor &cursor) -> Atom::CharClass {
+auto parse_unicode_category(Cursor &cursor, bool is_complement)
+    -> Atom::CharClass {
   Atom::CharClass result;
-  result.is_complement = (cursor.peek() == 'P');
+  result.is_complement = is_complement;
 
   cursor.eat_or_throw('{');
   switch (cursor.peek_or_throw("match group type"sv)) {
@@ -577,9 +600,12 @@ auto parse_character_category(Cursor &cursor) -> Atom::CharClass {
 
 auto parse_char_or_char_class(Cursor &cursor)
     -> std::variant<Codepoint, Atom::CharClass> {
+  auto is_upper_case = [](char c) { return c == std::toupper(c); };
+
   // Escaped character or character class
   if (cursor.try_eat('\\')) {
     char next_char = cursor.peek_or_throw("escaped group"sv);
+    cursor.eat_next();
     switch (next_char) {
     default:
       throw std::runtime_error(
@@ -603,19 +629,31 @@ auto parse_char_or_char_class(Cursor &cursor)
 
     // Special characters
     case 'n':
-      cursor.eat_next();
       return {Codepoint{'\n'}};
     case 'r':
-      cursor.eat_next();
       return {Codepoint{'\r'}};
     case 't':
-      cursor.eat_next();
       return {Codepoint{'\t'}};
 
     // Categories
     case 'p':
     case 'P':
-      return {parse_character_category(cursor)};
+      return {parse_unicode_category(cursor, is_upper_case(next_char))};
+
+    case 'd':
+    case 'D':
+      return {Atom::CharClass{.type = Atom::ASCIIDigit{},
+                              .is_complement = is_upper_case(next_char)}};
+
+    case 's':
+    case 'S':
+      return {Atom::CharClass{.type = Atom::ASCIIWhitespace{},
+                              .is_complement = is_upper_case(next_char)}};
+
+    case 'w':
+    case 'W':
+      return {Atom::CharClass{.type = Atom::ASCIIAlphaNumeric{},
+                              .is_complement = is_upper_case(next_char)}};
     }
   }
 
@@ -874,9 +912,9 @@ auto build_state_tree(Regex const &regex, StateList &all_states,
               }},
           piece.quantifier.type);
 
-        if (previous_fragment.input_states.empty()) {
-            previous_fragment.input_states = fragment.input_states;
-        }
+      if (previous_fragment.input_states.empty()) {
+        previous_fragment.input_states = fragment.input_states;
+      }
     }
 
     // Merge into the overall fragment
@@ -892,25 +930,38 @@ auto build_state_tree(Regex const &regex, StateList &all_states,
 
 auto format_atom(Atom atom) -> std::string {
   return std::visit(
-      Overload([](Atom::Any) { return std::string{Atom::Any::name}; },
-               [](Codepoint codepoint) {
-                 return std::format("{}", (char)codepoint.value);
-               },
-               [](Atom::CharClass c) {
-                 auto prefix = c.is_complement ? "P"sv : "p"sv;
-                 auto name = std::visit(
-                     [](auto c) { return std::string{c.name}; }, c.type);
-                 return std::format("{}{}", prefix, name);
-               },
-               [](Atom::CharClassExpr) {
-                 assert(!"Unreachable");
-                 return std::string{};
-               },
-               [](Atom::Placeholder) { return std::string{"Entry"}; },
-               [](Regex) {
-                 assert(!"Unreachable");
-                 return std::string{};
-               }),
+      Overload(
+          [](Atom::Any) { return std::string{Atom::Any::name}; },
+          [](Codepoint codepoint) {
+            return std::format("{}", (char)codepoint.value);
+          },
+          [](Atom::CharClass c) {
+            auto prefix = std::visit(
+                [](auto c) { return std::string{c.category}; }, c.type);
+            if (c.is_complement) {
+              ascii_toupper(prefix);
+            }
+
+            auto name = std::visit(
+                [](auto c) {
+                  if constexpr (std::is_base_of_v<Atom::Unicode, decltype(c)>) {
+                    return std::string{c.name};
+                  } else {
+                    return std::string{};
+                  }
+                },
+                c.type);
+            return std::format("\\\\{}{}", prefix, name);
+          },
+          [](Atom::CharClassExpr) {
+            assert(!"Unreachable");
+            return std::string{};
+          },
+          [](Atom::Placeholder) { return std::string{"Entry"}; },
+          [](Regex) {
+            assert(!"Unreachable");
+            return std::string{};
+          }),
       atom.type);
 }
 
@@ -918,7 +969,7 @@ auto format_state(State *state) -> std::string {
   return std::format("state_{}", (intptr_t)state);
 }
 
-auto output_subgraph(std::set<State *>& already_graphed, State *to_graph)
+auto output_subgraph(std::set<State *> &already_graphed, State *to_graph)
     -> void {
   already_graphed.insert(to_graph);
   for (auto *state : to_graph->output_states) {

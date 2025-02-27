@@ -808,7 +808,7 @@ using StateList = std::vector<std::unique_ptr<matching::State>>;
 auto allocate_state(StateList &all_states, Atom atom) -> State * {
   assert(not std::holds_alternative<Regex>(atom.type));
 
-  all_states.emplace_back(new State{atom, {}, 0});
+  all_states.emplace_back(new State{atom, {}, ~0UL});
   return all_states.back().get();
 }
 
@@ -957,7 +957,7 @@ auto format_atom(Atom atom) -> std::string {
             assert(!"Unreachable");
             return std::string{};
           },
-          [](Atom::Placeholder) { return std::string{"Entry"}; },
+          [](Atom::Placeholder) { return std::string{"Terminal"}; },
           [](Regex) {
             assert(!"Unreachable");
             return std::string{};
@@ -982,8 +982,7 @@ auto output_subgraph(std::set<State *> &already_graphed, State *to_graph)
   }
 }
 
-auto output_graph(const StateList &all_states, State *entry_state,
-                  const Fragment &fragment) -> void {
+auto output_graph(const StateList &all_states, State *entry_state) -> void {
 
   std::cout << "digraph {\n";
 
@@ -995,18 +994,103 @@ auto output_graph(const StateList &all_states, State *entry_state,
   std::set<State *> already_graphed;
   output_subgraph(already_graphed, entry_state);
 
-  for (auto *match_state : fragment.output_states) {
-    std::cout << format_state(match_state) << "-> Match" << "\n";
-  }
-
   std::cout << "}" << std::endl;
 }
 } // namespace matching
 } // namespace
 
+namespace evaluate {
+
+auto evaluate_condition(Codepoint, Atom::Any) -> bool { return true; }
+
+auto evaluate_condition(Codepoint, Atom::Placeholder) -> bool {
+  // An early match, just discard it
+  return false;
+}
+
+auto evaluate_condition(Codepoint, Regex) -> bool {
+  assert(!"Unreachable");
+  return false;
+}
+
+auto evaluate_condition(Codepoint character, Codepoint target) -> bool {
+  return character.value == target.value;
+}
+
+auto evaluate_condition(Codepoint, Atom::CharClass target) -> bool {
+  return not target.is_complement; // TODO
+}
+
+// Only used inside character expressions
+auto evaluate_condition(Codepoint character, Atom::CharClassExpr::Range target)
+    -> bool {
+  return target.lower.value <= character.value &&
+         target.upper.value >= character.value;
+}
+
+auto evaluate_condition(Codepoint character, Atom::CharClassExpr target)
+    -> bool {
+  for (auto item : target.expression) {
+    auto result = std::visit(
+        [&](auto condition) {
+          return evaluate_condition(character, condition);
+        },
+        item);
+    if (result) {
+      return true;
+    }
+  }
+  return false;
+}
+
+auto evaluate(std::string_view string, matching::State *entry_state,
+              matching::State *match_state) -> bool {
+  std::vector<matching::State *> evaluating = {
+      entry_state->output_states.begin(), entry_state->output_states.end()};
+  std::vector<matching::State *> next_to_evaluate;
+
+  size_t current_index = 0;
+  for (; current_index < string.size() && evaluating.size() > 0;
+       current_index += 1) {
+
+    while (evaluating.size() > 0) {
+      auto *next_state = evaluating.back();
+      evaluating.pop_back();
+      auto result = std::visit(
+          [&](auto condition) {
+            return evaluate_condition(Codepoint(string[current_index]),
+                                      condition);
+          },
+          next_state->condition.type);
+
+      if (result) {
+        for (auto *state : next_state->output_states) {
+          if (state->last_added_at_index == current_index) {
+            continue; // Already added
+          }
+          state->last_added_at_index = current_index;
+          next_to_evaluate.push_back(state);
+        }
+      }
+    }
+
+    std::swap(evaluating, next_to_evaluate);
+    next_to_evaluate.clear();
+  }
+
+  if (current_index == string.size() &&
+      match_state->last_added_at_index == current_index - 1) {
+    // The last character was a match!
+    return true;
+  }
+  return false;
+}
+} // namespace evaluate
+
 int main(int argc, char *argv[]) {
-  assert(argc == 2);
+  assert(argc == 3);
   std::string_view regex_string = argv[1];
+  std::string_view match_string = argv[2];
 
   // Parse
   parsing::Cursor cursor{.text = regex_string, .offset = 0};
@@ -1018,7 +1102,21 @@ int main(int argc, char *argv[]) {
       matching::allocate_state(all_states, {Atom::Placeholder{}});
   auto regex_fragment =
       matching::build_state_tree(regex, all_states, {entry_state});
+  auto match_state =
+      matching::allocate_state(all_states, {Atom::Placeholder{}});
+
+  for (auto *final_state : regex_fragment.output_states) {
+    final_state->output_states.insert(match_state);
+  }
 
   // Graph
-  matching::output_graph(all_states, entry_state, regex_fragment);
+  matching::output_graph(all_states, entry_state);
+
+  // Evaluate
+  auto result = evaluate::evaluate(match_string, entry_state, match_state);
+  if (result) {
+    std::cerr << "Match!" << std::endl;
+  } else {
+    std::cerr << "No match :-(" << std::endl;
+  }
 }

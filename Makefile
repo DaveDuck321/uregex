@@ -1,6 +1,9 @@
 CXX := g++
 AR := ar
-CXX_FLAGS := -O0 -g -std=c++2b -Wall -Wpedantic -Werror -Wextra -fsanitize=undefined -fsanitize=address
+CXX_FLAGS := -g -std=c++2b -Wall -Wpedantic -Werror -Wextra
+CXX_FLAGS += -fsanitize=undefined -fsanitize=address
+CXX_FLAGS += -Iinclude
+CXX_FLAGS += -O0
 
 BUILD_DIR := build
 
@@ -20,13 +23,13 @@ $(BUILD_DIR):
 	mkdir -p $(BUILD_DIR)
 
 $(BUILD_DIR)/%.o: src/%.cpp | $(BUILD_DIR)
-	$(CXX) $(CXX_FLAGS) -c $^ -o $@ -Iinclude
+	$(CXX) $(CXX_FLAGS) -c $^ -o $@
 
 $(STATIC_LIB): $(LIB_OBJECTS)
 	$(AR) r $(STATIC_LIB) $(LIB_OBJECTS)
 
 regex-jit: regex-jit.cpp $(STATIC_LIB)
-	$(CXX) $(CXX_FLAGS) -Iinclude $^ -o $@
+	$(CXX) $(CXX_FLAGS) $^ -o $@
 
 .phony: clean
 clean:

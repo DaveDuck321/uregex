@@ -7,30 +7,40 @@ CXX_FLAGS += -O0
 
 BUILD_DIR := build
 
-.phony: default
-default: regex-jit
+.PHONY: default
+default: regex-jit build/test.out
 
 TARGET := regex-jit
-SOURCES := \
+LIB_SOURCES := \
 	src/engine.cpp \
 	src/parser.cpp \
 	src/visualize.cpp
 
-LIB_OBJECTS = $(patsubst src/%, build/%, $(patsubst %.cpp, %.o, $(SOURCES)))
+LIB_OBJECTS = $(patsubst src/%, build/%, $(patsubst %.cpp, %.o, $(LIB_SOURCES)))
+DEP_INCLUDES = $(patsubst build/%.o, build/%.d, $(LIB_OBJECTS))
 STATIC_LIB = $(BUILD_DIR)/regex.a
+
+TEST_SOURCES := \
+	test/testing.cpp \
+	test/test_matching.cpp
 
 $(BUILD_DIR):
 	mkdir -p $(BUILD_DIR)
 
+-include $(DEP_INCLUDES)
 $(BUILD_DIR)/%.o: src/%.cpp | $(BUILD_DIR)
-	$(CXX) $(CXX_FLAGS) -c $^ -o $@
+	$(CXX) -MMD $(CXX_FLAGS) -c $^ -o $@
 
 $(STATIC_LIB): $(LIB_OBJECTS)
 	$(AR) r $(STATIC_LIB) $(LIB_OBJECTS)
 
-regex-jit: regex-jit.cpp $(STATIC_LIB)
+-include build/test.d
+build/test.out: $(TEST_SOURCES) $(STATIC_LIB)
+	$(CXX) -MMD $(CXX_FLAGS) $(TEST_SOURCES) $(STATIC_LIB) -o build/test.out
+
+regex-jit: regex-jit.cpp $(STATIC_LIB) $(wildcard include/regex/*.hpp)
 	$(CXX) $(CXX_FLAGS) $^ -o $@
 
-.phony: clean
+.PHONY: clean
 clean:
 	rm -r regex-jit $(BUILD_DIR)

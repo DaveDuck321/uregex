@@ -3,7 +3,10 @@
 #include "regex/nfa.hpp"
 #include "regex/unicode.hpp"
 
+#include <array>
 #include <cassert>
+#include <iostream>
+#include <type_traits>
 
 using namespace regex;
 
@@ -31,11 +34,51 @@ constexpr auto evaluate_condition(Codepoint codepoint, category::Range range)
          range.upper.value >= codepoint.value;
 }
 
+template <typename Category>
+constexpr auto is_in_category(Codepoint codepoint) -> bool {
+  auto input_category = get_category(codepoint);
+
+  static_assert(std::is_base_of_v<category::Unicode, Category>);
+  constexpr auto target_category = Category::category;
+  if constexpr (target_category.size() == 1) {
+    return input_category[0] == target_category[0];
+  } else {
+    static_assert(target_category.size() == 2);
+    return input_category[0] == target_category[0] &&
+           input_category[1] == target_category[1];
+  }
+}
+
+template <>
+constexpr auto is_in_category<category::ASCIIDigit>(Codepoint codepoint)
+    -> bool {
+  // We match python's interpretation of the ASCII groups and instead just match
+  // them as unicode categories.
+  return is_in_category<category::NumberDecimal>(codepoint);
+}
+
+template <>
+constexpr auto is_in_category<category::ASCIIWhitespace>(Codepoint codepoint)
+    -> bool {
+  // TODO: from python docs:
+  // - [x] either its general category is Zs (“Separator, space”,
+  // - [ ] or its bidirectional class is one of WS, B, or S.
+  return is_in_category<category::SeparatorSpace>(codepoint) ||
+         is_in_category<category::OtherControl>(codepoint);
+}
+
+template <>
+constexpr auto is_in_category<category::ASCIIAlphaNumeric>(Codepoint codepoint)
+    -> bool {
+  auto category = get_category(codepoint);
+  return codepoint.value == '_' || category[0] == 'L' || category[0] == 'N';
+}
+
 template <typename Class>
 constexpr auto
-evaluate_condition(Codepoint,
+evaluate_condition(Codepoint codepoint,
                    Condition::CharacterClass<Class> character_class) -> bool {
-  return !character_class.is_complement; // TODO
+  return character_class.is_complement ^ is_in_category<Class>(codepoint);
 }
 
 constexpr auto evaluate_condition(Codepoint codepoint,
@@ -48,10 +91,10 @@ constexpr auto evaluate_condition(Codepoint codepoint,
         },
         item);
     if (result) {
-      return true;
+      return !expression.is_complement;
     }
   }
-  return false;
+  return expression.is_complement;
 }
 } // namespace
 
@@ -61,16 +104,18 @@ auto regex::evaluate(RegexGraph &graph, std::string_view string) -> bool {
   std::vector<State *> next_to_evaluate;
 
   size_t current_index = 0;
-  for (; current_index < string.size() && evaluating.size() > 0;
-       current_index += 1) {
+  while (current_index < string.size() && evaluating.size() > 0) {
+    size_t codepoint_size = 0;
+    Codepoint codepoint =
+        parse_utf8_char(string.substr(current_index), codepoint_size);
+    current_index += codepoint_size;
 
     while (evaluating.size() > 0) {
       auto *next_state = evaluating.back();
       evaluating.pop_back();
       auto result = std::visit(
           [&](auto condition) {
-            return evaluate_condition(Codepoint(string[current_index]),
-                                      condition);
+            return evaluate_condition(codepoint, condition);
           },
           next_state->condition.type);
 
@@ -90,7 +135,7 @@ auto regex::evaluate(RegexGraph &graph, std::string_view string) -> bool {
   }
 
   if (current_index == string.size() &&
-      graph.match->last_added_at_index == current_index - 1) {
+      graph.match->last_added_at_index == current_index) {
     // The last character was a match!
     return true;
   }

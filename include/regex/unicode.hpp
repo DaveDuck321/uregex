@@ -2,6 +2,7 @@
 
 #include "common.hpp"
 
+#include <cstdint>
 #include <string_view>
 #include <unistd.h>
 
@@ -17,7 +18,7 @@ struct Codepoint {
 constexpr auto parse_utf8_char(std::string_view text, size_t &offset)
     -> Codepoint {
   offset = 0;
-  auto eat_next = [&]() -> unsigned { return text[offset++]; };
+  auto eat_next = [&]() -> unsigned { return (uint8_t)text[offset++]; };
 
   // NOTE: quick and dirty... This is not correct
   unsigned first_byte = eat_next();
@@ -77,4 +78,6 @@ constexpr auto codepoint_to_utf8(std::string &output, Codepoint codepoint)
 
   throw RegexError("Cannot incode invalid codepoint {:x}", codepoint.value);
 }
+
+auto get_category(Codepoint codepoint) -> std::array<char, 2>;
 } // namespace regex

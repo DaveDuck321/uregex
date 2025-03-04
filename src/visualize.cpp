@@ -24,22 +24,22 @@ constexpr auto pretty_format(Condition::Match) -> std::string {
 }
 
 constexpr auto pretty_format(category::Any) -> std::string {
-  return std::string{category::Any::category};
+  return std::string{category::Any::type};
 }
 
 template <typename Class>
 constexpr auto pretty_format(Condition::CharacterClass<Class> character_class)
     -> std::string {
 
-  std::string category = std::string{Class::category};
+  std::string type = std::string{Class::type};
   if (character_class.is_complement) {
-    to_uppercase(category);
+    to_uppercase(type);
   }
 
   if constexpr (std::is_base_of_v<category::Unicode, Class>) {
-    return std::format("\\\\{}{}", category, Class::subcategory);
+    return std::format("\\\\{}{{{}}}", type, Class::category);
   } else {
-    return std::format("\\\\{}", category);
+    return std::format("\\\\{}", type);
   }
 }
 

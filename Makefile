@@ -25,7 +25,7 @@ STATIC_LIB = $(BUILD_DIR)/regex.a
 
 TEST_SOURCES := \
 	test/testing.cpp \
-	test/test_groups.cpp \
+	test/test_classes.cpp \
 	test/test_matching.cpp \
 
 $(BUILD_DIR):

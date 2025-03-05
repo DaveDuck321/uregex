@@ -337,6 +337,10 @@ constexpr auto parse_unicode_category(Cursor &cursor, bool is_complement)
       break;
     case 'm':
       cursor.eat_next();
+      result.type = category::SymbolMath{};
+      break;
+    case 'k':
+      cursor.eat_next();
       result.type = category::SymbolModifier{};
       break;
     case 'o':
@@ -361,6 +365,11 @@ constexpr auto parse_unicode_category(Cursor &cursor, bool is_complement)
       cursor.eat_next();
       result.type = category::OtherControl{};
       break;
+    case 's':
+      // Likely not reachable with a correct utf-8 parsing implementation
+      cursor.eat_next();
+      result.type = category::OtherSurrogateHalf{};
+      break;
     case 'f':
       cursor.eat_next();
       result.type = category::OtherFormat{};
@@ -372,6 +381,10 @@ constexpr auto parse_unicode_category(Cursor &cursor, bool is_complement)
     case 'o':
       cursor.eat_next();
       result.type = category::OtherPrivateUse{};
+      break;
+    case 'u':
+      cursor.eat_next();
+      result.type = category::OtherUnassigned{};
       break;
     }
     break;

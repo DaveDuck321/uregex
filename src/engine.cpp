@@ -118,6 +118,11 @@ auto regex::evaluate(RegexGraph &graph, std::string_view string) -> bool {
                                      graph.entry->output_states.end()};
   std::vector<State *> next_to_evaluate;
 
+  // Reset invasive state between invocations
+  for (auto &state : graph.all_states) {
+    state->last_added_at_index = ~0;
+  }
+
   size_t current_index = 0;
   while (current_index < string.size() && evaluating.size() > 0) {
     size_t codepoint_size = 0;

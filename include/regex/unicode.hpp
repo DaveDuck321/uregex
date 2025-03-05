@@ -2,13 +2,27 @@
 
 #include "common.hpp"
 
+#include <cassert>
+#include <cstddef>
 #include <cstdint>
 #include <string_view>
 #include <unistd.h>
 
 namespace regex {
+struct Codepoint;
+
+constexpr auto parse_utf8_char(std::string_view text, size_t &offset)
+    -> Codepoint;
+
 struct Codepoint {
   unsigned value;
+
+  constexpr Codepoint(unsigned value) : value{value} {}
+  explicit constexpr Codepoint(std::string_view utf8_char) : value{0} {
+    size_t parsed_bytes;
+    value = parse_utf8_char(utf8_char, parsed_bytes).value;
+    assert(parsed_bytes == parsed_bytes);
+  }
 
   constexpr auto operator==(Codepoint const &) const -> bool = default;
 
@@ -67,6 +81,7 @@ constexpr auto codepoint_to_utf8(std::string &output, Codepoint codepoint)
     output.push_back(0xe0 | ((codepoint.value >> 12) & 0x0f));
     output.push_back(0x80 | ((codepoint.value >> 6) & 0x3f));
     output.push_back(0x80 | (codepoint.value & 0x3f));
+    return;
   }
 
   if (0x10000 <= codepoint.value && codepoint.value <= 0x10ffff) {
@@ -74,9 +89,10 @@ constexpr auto codepoint_to_utf8(std::string &output, Codepoint codepoint)
     output.push_back(0x80 | ((codepoint.value >> 12) & 0x3f));
     output.push_back(0x80 | ((codepoint.value >> 6) & 0x3f));
     output.push_back(0x80 | (codepoint.value & 0x3f));
+    return;
   }
 
-  throw RegexError("Cannot incode invalid codepoint {:x}", codepoint.value);
+  throw RegexError("Cannot encode invalid codepoint {:x}", codepoint.value);
 }
 
 auto get_category(Codepoint codepoint) -> std::array<char, 2>;

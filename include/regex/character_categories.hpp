@@ -2,6 +2,7 @@
 
 #include "unicode.hpp"
 
+#include <cstdint>
 #include <string_view>
 
 namespace regex::category {
@@ -169,5 +170,19 @@ using CharacterClassesList = meta::TypeList<
 struct Range {
   Codepoint lower;
   Codepoint upper;
+
+  constexpr Range(char lower, char upper)
+      : lower{static_cast<uint8_t>(lower)}, upper{static_cast<uint8_t>(upper)} {
+    assert(this->lower.value < this->upper.value);
+  }
+
+  constexpr Range(unsigned lower, unsigned upper) : lower{lower}, upper{upper} {
+    assert(lower <= upper);
+  }
+
+  constexpr Range(Codepoint lower, Codepoint upper)
+      : lower{lower}, upper{upper} {
+    assert(lower.value <= upper.value);
+  }
 };
 } // namespace regex::category

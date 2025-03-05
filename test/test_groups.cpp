@@ -23,8 +23,6 @@ TEST_CASE(basic_digit, "[regex][groups]") {
   CHECK(!does_match(R"(\D)", "7"));
   CHECK(does_match(R"(\D)", "a"));
   CHECK(does_match(R"(\D)", "_"));
-
-  CHECK(does_match(R"(\d)", "🯹"));
 }
 
 TEST_CASE(basic_whitespace, "[regex][groups]") {
@@ -32,11 +30,15 @@ TEST_CASE(basic_whitespace, "[regex][groups]") {
   CHECK(does_match(R"(\s)", " "));
   CHECK(does_match(R"(\s)", "\n"));
   CHECK(does_match(R"(\s)", "\r"));
+  CHECK(does_match(R"(\s)", " "));
 
+  CHECK(!does_match(R"(\s)", "_"));
+  CHECK(does_match(R"(\S)", "9"));
   CHECK(!does_match(R"(\S)", "\t"));
 }
 
 TEST_CASE(basic_alphanumeric, "[regex][groups]") {
   CHECK(does_match(R"(\w+)", "_09abcABC"));
-  CHECK(does_match(R"(\w{3})", "ᾞ🯹_"));
+  CHECK(!does_match(R"(\w+)", "Ā"));
+  CHECK(does_match(R"(\W)", " "));
 }

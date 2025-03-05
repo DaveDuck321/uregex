@@ -5,7 +5,6 @@
 
 #include <array>
 #include <cassert>
-#include <iostream>
 #include <type_traits>
 
 using namespace regex;
@@ -52,26 +51,42 @@ constexpr auto is_in_category(Codepoint codepoint) -> bool {
 template <>
 constexpr auto is_in_category<category::ASCIIDigit>(Codepoint codepoint)
     -> bool {
-  // We match python's interpretation of the ASCII groups and instead just match
-  // them as unicode categories.
-  return is_in_category<category::NumberDecimal>(codepoint);
+  return evaluate_condition(codepoint, category::Range{'0', '9'});
 }
 
 template <>
 constexpr auto is_in_category<category::ASCIIWhitespace>(Codepoint codepoint)
     -> bool {
-  // TODO: from python docs:
-  // - [x] either its general category is Zs (“Separator, space”,
-  // - [ ] or its bidirectional class is one of WS, B, or S.
-  return is_in_category<category::SeparatorSpace>(codepoint) ||
-         is_in_category<category::OtherControl>(codepoint);
+  // https://developer.mozilla.org/en-US/docs/Web/JavaScript/Guide/Regular_expressions/Character_classes
+  switch (codepoint.value) {
+  case ' ':
+  case '\f':
+  case '\n':
+  case '\r':
+  case '\t':
+  case '\v':
+  case 0x00a0U:
+  case 0x1680U:
+  case 0x2028U:
+  case 0x2029U:
+  case 0x202fU:
+  case 0x205fU:
+  case 0x3000U:
+  case 0xfeffU:
+    return true;
+  default:
+    return evaluate_condition(codepoint, category::Range{0x2000U, 0x200aU});
+  }
 }
 
 template <>
 constexpr auto is_in_category<category::ASCIIAlphaNumeric>(Codepoint codepoint)
     -> bool {
-  auto category = get_category(codepoint);
-  return codepoint.value == '_' || category[0] == 'L' || category[0] == 'N';
+  // https://developer.mozilla.org/en-US/docs/Web/JavaScript/Guide/Regular_expressions/Character_classes
+  return codepoint == Codepoint{'_'} ||
+         evaluate_condition(codepoint, category::Range('A', 'Z')) ||
+         evaluate_condition(codepoint, category::Range('a', 'z')) ||
+         is_in_category<category::ASCIIDigit>(codepoint);
 }
 
 template <typename Class>

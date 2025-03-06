@@ -589,10 +589,10 @@ constexpr auto parse_regex(Cursor &cursor) -> Regex {
   return result;
 }
 
-// State tree building
+// Node tree building
 struct Fragment {
-  std::set<State *> input_states;
-  std::set<State *> output_states;
+  std::set<Node *> input_nodes;
+  std::set<Node *> output_nodes;
 };
 
 template <typename T>
@@ -604,14 +604,14 @@ constexpr auto atom_class_to(Atom::CharacterClass input) -> T {
       input.type);
 }
 
-constexpr auto allocate_state(std::vector<std::unique_ptr<State>> &all_states,
-                              Condition condition) -> State * {
-  all_states.emplace_back(new State{condition, {}, ~0U});
-  return all_states.back().get();
+constexpr auto allocate_node(std::vector<std::unique_ptr<Node>> &all_nodes,
+                             Condition condition) -> Node * {
+  all_nodes.emplace_back(new Node{all_nodes.size(), condition, {}});
+  return all_nodes.back().get();
 }
 
-constexpr auto allocate_state(std::vector<std::unique_ptr<State>> &all_states,
-                              Atom atom) -> State * {
+constexpr auto allocate_node(std::vector<std::unique_ptr<Node>> &all_nodes,
+                             Atom atom) -> Node * {
   using ExpressionVariant =
       Condition::CustomExpression::CustomExpressionVariant;
 
@@ -642,43 +642,43 @@ constexpr auto allocate_state(std::vector<std::unique_ptr<State>> &all_states,
           [&](Regex) -> Condition { assert(!"Unreachable"); }},
       atom.type);
 
-  return allocate_state(all_states, condition);
+  return allocate_node(all_nodes, condition);
 }
 
-auto build_state_tree(Regex const &regex,
-                      std::vector<std::unique_ptr<State>> &all_states,
-                      std::set<State *> input_states) -> Fragment {
+auto build_graph(Regex const &regex,
+                 std::vector<std::unique_ptr<Node>> &all_nodes,
+                 std::set<Node *> input_nodes) -> Fragment {
 
   Fragment result{};
   for (const auto &branch : regex.branches) {
     Fragment previous_fragment;
-    previous_fragment.output_states = input_states;
+    previous_fragment.output_nodes = input_nodes;
 
     for (const auto &piece : branch.pieces) {
       auto get_fragment = [&]() -> Fragment {
         if (std::holds_alternative<Regex>(piece.atom.type)) {
           // Complex regex, all inputs are mapped recursively
           auto nested_regex = std::get<Regex>(piece.atom.type);
-          return build_state_tree(nested_regex, all_states,
-                                  previous_fragment.output_states);
+          return build_graph(nested_regex, all_nodes,
+                             previous_fragment.output_nodes);
         }
 
         // Simple comparison
-        auto *state = allocate_state(all_states, {piece.atom});
-        return {{state}, {state}};
+        auto *node = allocate_node(all_nodes, {piece.atom});
+        return {{node}, {node}};
       };
 
       Fragment fragment;
 
       auto merge = [&] {
         // Merge into one larger fragment
-        for (auto *output_state : previous_fragment.output_states) {
-          for (auto *input_state : fragment.input_states) {
-            output_state->output_states.insert(input_state);
+        for (auto *output_node : previous_fragment.output_nodes) {
+          for (auto *input_node : fragment.input_nodes) {
+            output_node->output_nodes.insert(input_node);
           }
         }
 
-        previous_fragment.output_states = fragment.output_states;
+        previous_fragment.output_nodes = fragment.output_nodes;
       };
 
       std::visit(
@@ -686,14 +686,13 @@ auto build_state_tree(Regex const &regex,
                      // previous -> current ->  next
                      //           |----<>---|
                      fragment = get_fragment();
-                     for (auto *output_state : fragment.output_states) {
-                       for (auto *input_state : fragment.input_states) {
-                         output_state->output_states.insert(input_state);
+                     for (auto *output_node : fragment.output_nodes) {
+                       for (auto *input_node : fragment.input_nodes) {
+                         output_node->output_nodes.insert(input_node);
                        }
                      }
-                     for (auto *output_state :
-                          previous_fragment.output_states) {
-                       fragment.output_states.insert(output_state);
+                     for (auto *output_node : previous_fragment.output_nodes) {
+                       fragment.output_nodes.insert(output_node);
                      }
                      merge();
                    },
@@ -701,9 +700,9 @@ auto build_state_tree(Regex const &regex,
                      // previous -> current ->  next
                      //           |----<----|
                      fragment = get_fragment();
-                     for (auto *output_state : fragment.output_states) {
-                       for (auto *input_state : fragment.input_states) {
-                         output_state->output_states.insert(input_state);
+                     for (auto *output_node : fragment.output_nodes) {
+                       for (auto *input_node : fragment.input_nodes) {
+                         output_node->output_nodes.insert(input_node);
                        }
                      }
                      merge();
@@ -716,31 +715,31 @@ auto build_state_tree(Regex const &regex,
                        merge();
                      }
 
-                     std::set<State *> additional_output_states;
+                     std::set<Node *> additional_output_nodes;
                      for (size_t i = range.lower; i < range.upper; i += 1) {
-                       for (auto *state : previous_fragment.output_states) {
-                         additional_output_states.insert(state);
+                       for (auto *node : previous_fragment.output_nodes) {
+                         additional_output_nodes.insert(node);
                        }
                        fragment = get_fragment();
                        merge();
                      }
-                     for (auto *state : additional_output_states) {
-                       previous_fragment.output_states.insert(state);
+                     for (auto *node : additional_output_nodes) {
+                       previous_fragment.output_nodes.insert(node);
                      }
                    }},
           piece.quantifier.type);
 
-      if (previous_fragment.input_states.empty()) {
-        previous_fragment.input_states = fragment.input_states;
+      if (previous_fragment.input_nodes.empty()) {
+        previous_fragment.input_nodes = fragment.input_nodes;
       }
     }
 
     // Merge into the overall fragment
-    for (auto *state : previous_fragment.input_states) {
-      result.input_states.insert(state);
+    for (auto *node : previous_fragment.input_nodes) {
+      result.input_nodes.insert(node);
     }
-    for (auto *state : previous_fragment.output_states) {
-      result.output_states.insert(state);
+    for (auto *node : previous_fragment.output_nodes) {
+      result.output_nodes.insert(node);
     }
   }
   return result;
@@ -752,18 +751,18 @@ auto regex::parse(std::string_view regex_string) -> RegexGraph {
   Cursor cursor{.text = regex_string, .offset = 0};
   auto regex = parse_regex(cursor);
 
-  // Convert into state graph
-  std::vector<std::unique_ptr<State>> all_states;
-  auto *entry_state = allocate_state(all_states, {Condition::Entry{}});
-  auto regex_fragment = build_state_tree(regex, all_states, {entry_state});
-  auto *match_state = allocate_state(all_states, {Condition::Match{}});
-  for (auto *final_state : regex_fragment.output_states) {
-    final_state->output_states.insert(match_state);
+  // Convert into node graph
+  std::vector<std::unique_ptr<Node>> all_nodes;
+  auto *entry_node = allocate_node(all_nodes, {Condition::Entry{}});
+  auto regex_fragment = build_graph(regex, all_nodes, {entry_node});
+  auto *match_node = allocate_node(all_nodes, {Condition::Match{}});
+  for (auto *final_node : regex_fragment.output_nodes) {
+    final_node->output_nodes.insert(match_node);
   }
 
   return {
-      .all_states = std::move(all_states),
-      .entry = entry_state,
-      .match = match_state,
+      .all_nodes = std::move(all_nodes),
+      .entry = entry_node,
+      .match = match_node,
   };
 }

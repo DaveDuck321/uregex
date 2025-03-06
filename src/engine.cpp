@@ -113,16 +113,27 @@ constexpr auto evaluate_condition(Codepoint codepoint,
 }
 } // namespace
 
+struct State {
+  size_t last_added;
+  Node const *node;
+};
+
 auto regex::evaluate(RegexGraph &graph, std::string_view string) -> bool {
-  std::vector<State *> evaluating = {graph.entry->output_states.begin(),
-                                     graph.entry->output_states.end()};
+  std::vector<State *> evaluating;
   std::vector<State *> next_to_evaluate;
 
-  // Reset invasive state between invocations
-  for (auto &state : graph.all_states) {
-    state->last_added_at_index = ~0;
+  // Allocate states and setup the first evaluation
+  std::vector<State> states;
+  states.reserve(graph.all_nodes.size());
+
+  for (auto &node : graph.all_nodes) {
+    states.push_back(State{~0U, node.get()});
+  }
+  for (auto const *node : graph.entry->output_nodes) {
+    evaluating.push_back(&states[node->index]);
   }
 
+  // Evaluate!
   size_t current_index = 0;
   while (current_index < string.size() && evaluating.size() > 0) {
     size_t codepoint_size = 0;
@@ -132,20 +143,22 @@ auto regex::evaluate(RegexGraph &graph, std::string_view string) -> bool {
 
     while (evaluating.size() > 0) {
       auto *next_state = evaluating.back();
+      auto const *node = next_state->node;
+
       evaluating.pop_back();
       auto result = std::visit(
           [&](auto condition) {
             return evaluate_condition(codepoint, condition);
           },
-          next_state->condition.type);
+          node->condition.type);
 
       if (result) {
-        for (auto *state : next_state->output_states) {
-          if (state->last_added_at_index == current_index) {
+        for (auto const *node : node->output_nodes) {
+          if (states[node->index].last_added == current_index) {
             continue; // Already added
           }
-          state->last_added_at_index = current_index;
-          next_to_evaluate.push_back(state);
+          states[node->index].last_added = current_index;
+          next_to_evaluate.push_back(&states[node->index]);
         }
       }
     }
@@ -155,7 +168,7 @@ auto regex::evaluate(RegexGraph &graph, std::string_view string) -> bool {
   }
 
   if (current_index == string.size() &&
-      graph.match->last_added_at_index == current_index) {
+      states[graph.match->index].last_added == current_index) {
     // The last character was a match!
     return true;
   }

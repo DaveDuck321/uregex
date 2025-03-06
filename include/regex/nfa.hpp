@@ -43,15 +43,15 @@ struct Condition {
   ConditionVariant type;
 };
 
-struct State {
+struct Node {
+  size_t index;
   Condition condition;
-  SmallSet<State *> output_states;
-  size_t last_added_at_index;
+  SmallSet<Node const *> output_nodes;
 };
 
 struct RegexGraph {
-  std::vector<std::unique_ptr<State>> all_states;
-  State *entry;
-  State *match;
+  std::vector<std::unique_ptr<Node>> all_nodes;
+  Node const *entry;
+  Node const *match;
 };
 } // namespace regex

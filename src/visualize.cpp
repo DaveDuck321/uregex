@@ -73,20 +73,20 @@ constexpr auto pretty_format(Condition::CustomExpression expression)
   return output;
 }
 
-auto unique_state_tag(State const *state) -> std::string {
-  return std::format("state_{}", (intptr_t)state);
+auto unique_node_tag(Node const *node) -> std::string {
+  return std::format("node_{}", (intptr_t)node);
 }
 
 auto output_subgraph(std::ostream &out_stream,
-                     std::set<State const *> &already_graphed,
-                     State const *to_graph) -> void {
+                     std::set<Node const *> &already_graphed,
+                     Node const *to_graph) -> void {
   already_graphed.insert(to_graph);
-  for (auto *state : to_graph->output_states) {
-    out_stream << "  " << unique_state_tag(to_graph) << " -> "
-               << unique_state_tag(state) << "\n";
+  for (auto const *node : to_graph->output_nodes) {
+    out_stream << "  " << unique_node_tag(to_graph) << " -> "
+               << unique_node_tag(node) << "\n";
 
-    if (already_graphed.find(state) == already_graphed.end()) {
-      output_subgraph(out_stream, already_graphed, state);
+    if (already_graphed.find(node) == already_graphed.end()) {
+      output_subgraph(out_stream, already_graphed, node);
     }
   }
 }
@@ -96,15 +96,15 @@ auto regex::output_graph(std::ostream &out_stream, const RegexGraph &graph)
     -> void {
   out_stream << "digraph {\n";
 
-  for (auto &state : graph.all_states) {
+  for (auto const &node : graph.all_nodes) {
     auto const condition_fmt = std::visit(
-        [](auto type) { return pretty_format(type); }, state->condition.type);
+        [](auto type) { return pretty_format(type); }, node->condition.type);
 
     out_stream << std::format("  {} [label=\"{}\"]\n",
-                              unique_state_tag(state.get()), condition_fmt);
+                              unique_node_tag(node.get()), condition_fmt);
   }
 
-  std::set<State const *> already_graphed;
+  std::set<Node const *> already_graphed;
   output_subgraph(out_stream, already_graphed, graph.entry);
 
   out_stream << "}" << std::endl;

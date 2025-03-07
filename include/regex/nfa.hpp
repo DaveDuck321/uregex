@@ -4,6 +4,7 @@
 #include "common.hpp"
 #include "small_set.hpp"
 
+#include <cstddef>
 #include <memory>
 #include <vector>
 
@@ -47,11 +48,14 @@ struct Node {
   size_t index;
   Condition condition;
   SmallSet<Node const *> output_nodes;
+  SmallSet<size_t> start_of_groups;
+  SmallSet<size_t> end_of_groups;
 };
 
 struct RegexGraph {
   std::vector<std::unique_ptr<Node>> all_nodes;
   Node const *entry;
   Node const *match;
+  size_t number_of_groups;
 };
 } // namespace regex

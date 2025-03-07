@@ -81,6 +81,7 @@ TEST_CASE(maybe, "[regex][matching]") {
   CHECK(!does_match(R"(abcde?)", "abc"));
   CHECK(does_match(R"(abc?)", "abc"));
   CHECK(does_match(R"(ab(c?){50})", "abc"));
+  CHECK(does_match(R"(ab(c?){50})", "ab"));
 }
 
 TEST_CASE(either, "[regex][matching]") {

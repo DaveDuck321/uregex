@@ -17,7 +17,10 @@ public:
     m_entries.push_back(entry);
   }
 
+  auto empty() const -> bool { return m_entries.empty(); }
+
   auto begin() const { return m_entries.begin(); }
   auto end() const { return m_entries.end(); }
+  auto back() const -> T const & { return m_entries.back(); };
 };
 } // namespace regex

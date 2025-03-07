@@ -606,7 +606,7 @@ constexpr auto atom_class_to(Atom::CharacterClass input) -> T {
 
 constexpr auto allocate_node(std::vector<std::unique_ptr<Node>> &all_nodes,
                              Condition condition) -> Node * {
-  all_nodes.emplace_back(new Node{all_nodes.size(), condition, {}});
+  all_nodes.emplace_back(new Node{all_nodes.size(), condition, {}, {}, {}});
   return all_nodes.back().get();
 }
 
@@ -645,22 +645,36 @@ constexpr auto allocate_node(std::vector<std::unique_ptr<Node>> &all_nodes,
   return allocate_node(all_nodes, condition);
 }
 
-auto build_graph(Regex const &regex,
-                 std::vector<std::unique_ptr<Node>> &all_nodes,
-                 std::set<Node *> input_nodes) -> Fragment {
-
+auto build_fragment(Regex const &regex,
+                    std::vector<std::unique_ptr<Node>> &all_nodes,
+                    std::set<Node *> input_nodes, size_t &current_group_index)
+    -> Fragment {
   Fragment result{};
   for (const auto &branch : regex.branches) {
     Fragment previous_fragment;
     previous_fragment.output_nodes = input_nodes;
 
     for (const auto &piece : branch.pieces) {
+      std::optional<size_t> allocated_group = {};
+
       auto get_fragment = [&]() -> Fragment {
         if (std::holds_alternative<Regex>(piece.atom.type)) {
           // Complex regex, all inputs are mapped recursively
+          if (not allocated_group.has_value()) {
+            allocated_group = current_group_index++;
+          }
+
           auto nested_regex = std::get<Regex>(piece.atom.type);
-          return build_graph(nested_regex, all_nodes,
-                             previous_fragment.output_nodes);
+          auto fragment = build_fragment(nested_regex, all_nodes,
+                                         previous_fragment.output_nodes,
+                                         current_group_index);
+          for (auto *node : fragment.input_nodes) {
+            node->start_of_groups.insert(*allocated_group);
+          }
+          for (auto *node : fragment.output_nodes) {
+            node->end_of_groups.insert(*allocated_group);
+          }
+          return fragment;
         }
 
         // Simple comparison
@@ -753,8 +767,10 @@ auto regex::parse(std::string_view regex_string) -> RegexGraph {
 
   // Convert into node graph
   std::vector<std::unique_ptr<Node>> all_nodes;
+  size_t number_of_groups = 0;
   auto *entry_node = allocate_node(all_nodes, {Condition::Entry{}});
-  auto regex_fragment = build_graph(regex, all_nodes, {entry_node});
+  auto regex_fragment =
+      build_fragment(regex, all_nodes, {entry_node}, number_of_groups);
   auto *match_node = allocate_node(all_nodes, {Condition::Match{}});
   for (auto *final_node : regex_fragment.output_nodes) {
     final_node->output_nodes.insert(match_node);
@@ -764,5 +780,6 @@ auto regex::parse(std::string_view regex_string) -> RegexGraph {
       .all_nodes = std::move(all_nodes),
       .entry = entry_node,
       .match = match_node,
+      .number_of_groups = number_of_groups,
   };
 }

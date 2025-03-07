@@ -5,6 +5,7 @@
 
 #include <array>
 #include <cassert>
+#include <cstddef>
 #include <type_traits>
 
 using namespace regex;
@@ -113,12 +114,18 @@ constexpr auto evaluate_condition(Codepoint codepoint,
 }
 } // namespace
 
+struct Group {
+  size_t start_index = ~0U;
+  size_t end_index = ~0U;
+};
 struct State {
   size_t last_added;
   Node const *node;
+  std::vector<Group> groups;
 };
 
-auto regex::evaluate(RegexGraph &graph, std::string_view string) -> bool {
+auto regex::evaluate(RegexGraph &graph, std::string_view string)
+    -> MatchResult {
   std::vector<State *> evaluating;
   std::vector<State *> next_to_evaluate;
 
@@ -127,7 +134,9 @@ auto regex::evaluate(RegexGraph &graph, std::string_view string) -> bool {
   states.reserve(graph.all_nodes.size());
 
   for (auto &node : graph.all_nodes) {
-    states.push_back(State{~0U, node.get()});
+    auto state =
+        State{~0U, node.get(), std::vector<Group>{graph.number_of_groups}};
+    states.push_back(std::move(state));
   }
   for (auto const *node : graph.entry->output_nodes) {
     evaluating.push_back(&states[node->index]);
@@ -142,23 +151,35 @@ auto regex::evaluate(RegexGraph &graph, std::string_view string) -> bool {
     current_index += codepoint_size;
 
     while (evaluating.size() > 0) {
-      auto *next_state = evaluating.back();
-      auto const *node = next_state->node;
+      auto *evaluating_state = evaluating.back();
+      auto const *evaluating_node = evaluating_state->node;
 
       evaluating.pop_back();
       auto result = std::visit(
           [&](auto condition) {
             return evaluate_condition(codepoint, condition);
           },
-          node->condition.type);
+          evaluating_node->condition.type);
 
       if (result) {
-        for (auto const *node : node->output_nodes) {
-          if (states[node->index].last_added == current_index) {
+        for (auto const *node : evaluating_node->output_nodes) {
+          auto &state = states[node->index];
+
+          // TODO: we should replace the current state for greedy matches
+          if (state.last_added == current_index) {
             continue; // Already added
           }
-          states[node->index].last_added = current_index;
-          next_to_evaluate.push_back(&states[node->index]);
+
+          state.groups = evaluating_state->groups;
+          for (auto group : evaluating_node->start_of_groups) {
+            state.groups[group].start_index = current_index - codepoint_size;
+          }
+          for (auto group : evaluating_node->end_of_groups) {
+            state.groups[group].end_index = current_index;
+          }
+
+          state.last_added = current_index;
+          next_to_evaluate.push_back(&state);
         }
       }
     }
@@ -170,7 +191,21 @@ auto regex::evaluate(RegexGraph &graph, std::string_view string) -> bool {
   if (current_index == string.size() &&
       states[graph.match->index].last_added == current_index) {
     // The last character was a match!
-    return true;
+    auto result = MatchResult{{}, true};
+    result.groups.reserve(graph.number_of_groups);
+    for (const auto &group : states[graph.match->index].groups) {
+      if (group.start_index != ~0U && group.end_index != ~0U) {
+        result.groups.push_back(
+            MatchResult::Group{group.start_index, group.end_index});
+      } else if (group.end_index != ~0U) {
+        // Zero length match
+        result.groups.push_back(
+            MatchResult::Group{group.end_index, group.end_index});
+      } else {
+        assert(group.start_index == ~0U);
+      }
+    }
+    return result;
   }
-  return false;
+  return MatchResult{{}, false};
 }

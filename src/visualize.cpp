@@ -3,6 +3,7 @@
 #include "regex/nfa.hpp"
 
 #include <set>
+#include <sstream>
 #include <string>
 #include <type_traits>
 
@@ -100,8 +101,32 @@ auto regex::output_graph(std::ostream &out_stream, const RegexGraph &graph)
     auto const condition_fmt = std::visit(
         [](auto type) { return pretty_format(type); }, node->condition.type);
 
+    std::stringstream label;
+    label << condition_fmt;
+
+    if (!node->start_of_groups.empty()) {
+      label << ", [start=";
+      for (auto const &group : node->start_of_groups) {
+        label << group;
+        if (&group != &node->start_of_groups.back()) {
+          label << ", ";
+        }
+      }
+      label << "]";
+    }
+    if (!node->end_of_groups.empty()) {
+      label << ", [end=";
+      for (auto const &group : node->end_of_groups) {
+        label << group;
+        if (&group != &node->end_of_groups.back()) {
+          label << ", ";
+        }
+      }
+      label << "]";
+    }
+
     out_stream << std::format("  {} [label=\"{}\"]\n",
-                              unique_node_tag(node.get()), condition_fmt);
+                              unique_node_tag(node.get()), label.str());
   }
 
   std::set<Node const *> already_graphed;

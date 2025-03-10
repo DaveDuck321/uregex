@@ -105,3 +105,53 @@ TEST_CASE(overlapping_groups, "[regex][groups]") {
   CHECK(result.groups[1]->start_index == 0);
   CHECK(result.groups[1]->end_index == 1);
 }
+
+TEST_CASE(lazy_match_plus, "[regex][groups]") {
+  auto result = match(R"((.+?)a(.+?))", "aaaaa");
+  CHECK(result);
+  REQUIRE(result.groups.size() == 2);
+  REQUIRE(result.groups[0].has_value());
+  CHECK(result.groups[0]->start_index == 0);
+  CHECK(result.groups[0]->end_index == 1);
+
+  REQUIRE(result.groups[1].has_value());
+  CHECK(result.groups[1]->start_index == 2);
+  CHECK(result.groups[1]->end_index == 5);
+}
+
+TEST_CASE(lazy_match_question_mark, "[regex][groups]") {
+  auto result = match(R"((a??)a+)", "aa");
+  CHECK(result);
+  REQUIRE(result.groups.size() == 1);
+  REQUIRE(result.groups[0].has_value());
+  CHECK(result.groups[0]->start_index == 0);
+  CHECK(result.groups[0]->end_index == 0);
+}
+
+TEST_CASE(greedy_match_question_mark, "[regex][groups]") {
+  auto result = match(R"((a?)a+)", "aa");
+  CHECK(result);
+  REQUIRE(result.groups.size() == 1);
+  REQUIRE(result.groups[0].has_value());
+  CHECK(result.groups[0]->start_index == 0);
+  CHECK(result.groups[0]->end_index == 1);
+}
+
+
+TEST_CASE(lazy_match_range, "[regex][groups]") {
+  auto result = match(R"((a{1,6}?)a+)", "aaaaaa");
+  CHECK(result);
+  REQUIRE(result.groups.size() == 1);
+  REQUIRE(result.groups[0].has_value());
+  CHECK(result.groups[0]->start_index == 0);
+  CHECK(result.groups[0]->end_index == 1);
+}
+
+TEST_CASE(greedy_match_range, "[regex][groups]") {
+  auto result = match(R"((a{1,6})a+)", "aaaaaa");
+  CHECK(result);
+  REQUIRE(result.groups.size() == 1);
+  REQUIRE(result.groups[0].has_value());
+  CHECK(result.groups[0]->start_index == 0);
+  CHECK(result.groups[0]->end_index == 5);
+}

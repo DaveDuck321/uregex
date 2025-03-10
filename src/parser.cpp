@@ -57,6 +57,7 @@ struct Quantifier {
 
   using QuantifierVariant = std::variant<NoneOrMore, OneOrMore, Range>;
   QuantifierVariant type;
+  bool is_greedy;
 };
 
 struct Piece {
@@ -533,20 +534,21 @@ constexpr auto parse_atom(Cursor &cursor) -> Atom {
 
 constexpr auto parse_quantifier(Cursor &cursor) -> Quantifier {
   if (cursor.is_at_end()) {
-    return {Quantifier::Range(1, 1)};
+    return {Quantifier::Range(1, 1), true};
   }
+  auto is_lazy = [&] { return cursor.try_eat('?'); };
   switch (cursor.peek()) {
   default:
-    return {Quantifier::Range(1, 1)};
+    return {Quantifier::Range(1, 1), true};
   case '*':
     cursor.eat_next();
-    return {Quantifier::NoneOrMore()};
+    return {Quantifier::NoneOrMore(), not is_lazy()};
   case '+':
     cursor.eat_next();
-    return {Quantifier::OneOrMore()};
+    return {Quantifier::OneOrMore(), not is_lazy()};
   case '?':
     cursor.eat_next();
-    return {Quantifier::Range(0, 1)};
+    return {Quantifier::Range(0, 1), not is_lazy()};
   case '{':
     break;
   }
@@ -558,13 +560,13 @@ constexpr auto parse_quantifier(Cursor &cursor) -> Quantifier {
   if (not cursor.try_eat(',')) {
     // Count quantifier
     cursor.eat_or_throw('}');
-    return {Quantifier::Range{first_number, first_number}};
+    return {Quantifier::Range{first_number, first_number}, not is_lazy()};
   }
 
   // Range quantifier
   unsigned second_number = parse_number(cursor);
   cursor.eat_or_throw('}');
-  return {Quantifier::Range{first_number, second_number}};
+  return {Quantifier::Range{first_number, second_number}, not is_lazy()};
 }
 
 constexpr auto parse_piece(Cursor &cursor) -> Piece {
@@ -779,10 +781,12 @@ auto build_piece_fragment(Piece const &piece,
                           std::vector<std::unique_ptr<Node>> &all_nodes,
                           std::vector<Counter> &all_counters, size_t &groups)
     -> Fragment {
+  Counter match_type =
+      piece.quantifier.is_greedy ? Counter::greedy : Counter::non_greedy;
   return std::visit(
       Overload{[&](Quantifier::NoneOrMore) {
                  size_t counter = all_counters.size();
-                 all_counters.push_back(Counter::greedy);
+                 all_counters.push_back(match_type);
 
                  auto atom_fragment = build_atom_fragment(piece.atom, all_nodes,
                                                           all_counters, groups);
@@ -802,7 +806,7 @@ auto build_piece_fragment(Piece const &piece,
                },
                [&](Quantifier::OneOrMore) {
                  size_t counter = all_counters.size();
-                 all_counters.push_back(Counter::greedy);
+                 all_counters.push_back(match_type);
 
                  auto atom_fragment = build_atom_fragment(piece.atom, all_nodes,
                                                           all_counters, groups);
@@ -832,7 +836,7 @@ auto build_piece_fragment(Piece const &piece,
                  size_t counter;
                  if (range.lower != range.upper) {
                    counter = all_counters.size();
-                   all_counters.push_back(Counter::greedy);
+                   all_counters.push_back(match_type);
                  }
 
                  std::vector<Fragment::Output> final_outputs;

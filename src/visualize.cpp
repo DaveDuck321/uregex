@@ -5,6 +5,7 @@
 #include <set>
 #include <sstream>
 #include <string>
+#include <string_view>
 #include <type_traits>
 
 using namespace regex;
@@ -74,6 +75,21 @@ constexpr auto pretty_format(Condition::CustomExpression expression)
   return output;
 }
 
+template <typename T>
+constexpr auto format_list(std::string_view name, T const &list)
+    -> std::string {
+  std::string result;
+  result += std::format("{} = [", name);
+  for (auto const &group : list) {
+    result += std::format("{}", group);
+    if (&group != &list.back()) {
+      result += ", ";
+    }
+  }
+  result += "] ";
+  return result;
+}
+
 auto unique_node_tag(Node const *node) -> std::string {
   return std::format("node_{}", (intptr_t)node);
 }
@@ -82,9 +98,22 @@ auto output_subgraph(std::ostream &out_stream,
                      std::set<Node const *> &already_graphed,
                      Node const *to_graph) -> void {
   already_graphed.insert(to_graph);
-  for (auto const *node : to_graph->output_nodes) {
-    out_stream << "  " << unique_node_tag(to_graph) << " -> "
-               << unique_node_tag(node) << "\n";
+  for (auto const &edge : to_graph->edges) {
+    auto const *node = edge.output;
+
+    std::string label;
+    if (not edge.start_groups.empty()) {
+      label += format_list("start", edge.start_groups);
+    }
+    if (not edge.end_groups.empty()) {
+      label += format_list("end", edge.end_groups);
+    }
+    if (not edge.counters.empty()) {
+      label += format_list("counts", edge.counters);
+    }
+
+    std::print(out_stream, " {} -> {} [label=\"{}\"]\n",
+               unique_node_tag(to_graph), unique_node_tag(node), label);
 
     if (already_graphed.find(node) == already_graphed.end()) {
       output_subgraph(out_stream, already_graphed, node);
@@ -104,29 +133,8 @@ auto regex::output_graph(std::ostream &out_stream, const RegexGraph &graph)
     std::stringstream label;
     label << condition_fmt;
 
-    if (!node->start_of_groups.empty()) {
-      label << ", [start=";
-      for (auto const &group : node->start_of_groups) {
-        label << group;
-        if (&group != &node->start_of_groups.back()) {
-          label << ", ";
-        }
-      }
-      label << "]";
-    }
-    if (!node->end_of_groups.empty()) {
-      label << ", [end=";
-      for (auto const &group : node->end_of_groups) {
-        label << group;
-        if (&group != &node->end_of_groups.back()) {
-          label << ", ";
-        }
-      }
-      label << "]";
-    }
-
-    out_stream << std::format("  {} [label=\"{}\"]\n",
-                              unique_node_tag(node.get()), label.str());
+    std::print(out_stream, "  {} [label=\"{}\"]\n", unique_node_tag(node.get()),
+               label.str());
   }
 
   std::set<Node const *> already_graphed;

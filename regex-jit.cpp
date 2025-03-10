@@ -5,6 +5,8 @@
 #include <cassert>
 #include <cctype>
 #include <iostream>
+#include <ostream>
+#include <ranges>
 #include <string_view>
 #include <sys/types.h>
 
@@ -22,8 +24,17 @@ int main(int argc, char *argv[]) {
   // Evaluate
   auto result = regex::evaluate(compiled, match_string);
   if (result) {
-    std::cerr << "Match!" << std::endl;
+    std::println(std::cerr, "Match!");
+    for (auto [index, group] : std::ranges::views::enumerate(result.groups)) {
+      if (group.has_value()) {
+        std::println(std::cerr, "  Group[{}]: '{}' ({}-{})", index,
+                     match_string.substr(group->start_index, group->end_index),
+                     group->start_index, group->end_index);
+      } else {
+        std::println(std::cerr, "  Group[{}]: None", index);
+      }
+    }
   } else {
-    std::cerr << "No match :-(" << std::endl;
+    std::println(std::cerr, "No match :-(");
   }
 }

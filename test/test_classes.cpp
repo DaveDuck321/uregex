@@ -17,7 +17,7 @@ auto does_match(std::string_view regex, std::string_view string) -> bool {
 }
 } // namespace
 
-TEST_CASE(basic_digit, "[regex][groups]") {
+TEST_CASE(basic_digit, "[regex][classes]") {
   CHECK(does_match(R"(\d)", "7"));
   CHECK(!does_match(R"(\d)", "a"));
   CHECK(!does_match(R"(\d)", "_"));
@@ -27,7 +27,7 @@ TEST_CASE(basic_digit, "[regex][groups]") {
   CHECK(does_match(R"(\D)", "_"));
 }
 
-TEST_CASE(basic_whitespace, "[regex][groups]") {
+TEST_CASE(basic_whitespace, "[regex][classes]") {
   CHECK(does_match(R"(\s)", "\t"));
   CHECK(does_match(R"(\s)", " "));
   CHECK(does_match(R"(\s)", "\n"));
@@ -39,13 +39,13 @@ TEST_CASE(basic_whitespace, "[regex][groups]") {
   CHECK(!does_match(R"(\S)", "\t"));
 }
 
-TEST_CASE(basic_alphanumeric, "[regex][groups]") {
+TEST_CASE(basic_alphanumeric, "[regex][classes]") {
   CHECK(does_match(R"(\w+)", "_09abcABC"));
   CHECK(!does_match(R"(\w+)", "Ā"));
   CHECK(does_match(R"(\W)", " "));
 }
 
-TEST_CASE(unicode_categories, "[regex][groups][unicode]") {
+TEST_CASE(unicode_categories, "[regex][classes][unicode]") {
   const std::map<std::string, regex::Codepoint> examples_from_category = {
       {"Cc", regex::Codepoint{0x0085}}, {"Cf", regex::Codepoint{0x206D}},
       {"Ll", regex::Codepoint{"ꮉ"}},    {"Lm", regex::Codepoint{"𖭂"}},
@@ -87,11 +87,10 @@ TEST_CASE(unicode_categories, "[regex][groups][unicode]") {
   }
 }
 
-TEST_CASE(custom_grouping, "[regex][groups][custom]") {
+TEST_CASE(custom_grouping, "[regex][classes][custom]") {
   CHECK(does_match(R"([_0-9a-zA-Z@]+)", "_09abcABC@"));
   CHECK(!does_match(R"([_0-9a-zA-Z@]+)", "!"));
   CHECK(!does_match(R"([^_0-9a-zA-Z@]+)", "123"));
-
 
   CHECK(does_match(R"([\w]+)", "_09abcABC"));
   CHECK(!does_match(R"([\w])", "@"));

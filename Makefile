@@ -27,6 +27,7 @@ TEST_SOURCES := \
 	test/testing.cpp \
 	test/test_classes.cpp \
 	test/test_matching.cpp \
+	test/test_groups.cpp \
 
 $(BUILD_DIR):
 	mkdir -p $(BUILD_DIR)

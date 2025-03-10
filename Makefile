@@ -7,12 +7,7 @@ CXX_FLAGS += -Iinclude
 CXX_FLAGS += -O0
 
 BUILD_DIR := build
-UNICODE_CATEGORY_DATA := $(BUILD_DIR)/unicode.bin
 
-.PHONY: default
-default: regex-jit $(BUILD_DIR)/test.out
-
-TARGET := regex-jit
 LIB_SOURCES := \
 	src/engine.cpp \
 	src/parser.cpp \
@@ -21,13 +16,15 @@ LIB_SOURCES := \
 
 LIB_OBJECTS = $(patsubst src/%, $(BUILD_DIR)/%, $(patsubst %.cpp, %.o, $(LIB_SOURCES)))
 DEP_INCLUDES = $(patsubst $(BUILD_DIR)/%.o, $(BUILD_DIR)/%.d, $(LIB_OBJECTS))
-STATIC_LIB = $(BUILD_DIR)/regex.a
 
 TEST_SOURCES := \
 	test/testing.cpp \
 	test/test_classes.cpp \
 	test/test_matching.cpp \
 	test/test_groups.cpp \
+
+.PHONY: default
+default: regex-jit $(BUILD_DIR)/test.out
 
 $(BUILD_DIR):
 	mkdir -p $(BUILD_DIR)
@@ -36,23 +33,23 @@ $(BUILD_DIR):
 $(BUILD_DIR)/%.o: src/%.cpp | $(BUILD_DIR)
 	$(CXX) -MMD $(CXX_FLAGS) -c $< -o $@
 
-$(BUILD_DIR)/unicode.o: src/unicode.cpp $(UNICODE_CATEGORY_DATA) | $(BUILD_DIR)
+$(BUILD_DIR)/unicode.o: src/unicode.cpp $(BUILD_DIR)/unicode.bin | $(BUILD_DIR)
 	$(CXX) -MMD $(CXX_FLAGS) -c $< -o $@
-	$(OBJCOPY) $@ --update-section unicode_category_data=$(UNICODE_CATEGORY_DATA)
+	$(OBJCOPY) $@ --update-section unicode_category_data=$(BUILD_DIR)/unicode.bin
 
 
-$(STATIC_LIB): $(LIB_OBJECTS)
-	$(AR) r $(STATIC_LIB) $(LIB_OBJECTS)
+$(BUILD_DIR)/regex.a: $(LIB_OBJECTS) | $(BUILD_DIR)
+	$(AR) r $(BUILD_DIR)/regex.a $(LIB_OBJECTS)
 
-$(UNICODE_CATEGORY_DATA): unicode/pack_categories.py
-	./unicode/pack_categories.py --version 16.0.0 --output $(UNICODE_CATEGORY_DATA)
+$(BUILD_DIR)/unicode.bin: unicode/pack_categories.py | $(BUILD_DIR)
+	./unicode/pack_categories.py --version 16.0.0 --output $(BUILD_DIR)/unicode.bin
 
 -include $(BUILD_DIR)/test.d
-$(BUILD_DIR)/test.out: $(TEST_SOURCES) $(STATIC_LIB)
-	$(CXX) -MMD $(CXX_FLAGS) $(TEST_SOURCES) $(STATIC_LIB) -o $@
+$(BUILD_DIR)/test.out: $(TEST_SOURCES) $(BUILD_DIR)/regex.a | $(BUILD_DIR)
+	$(CXX) -MMD $(CXX_FLAGS) $(TEST_SOURCES) $(BUILD_DIR)/regex.a -o $@
 
-regex-jit: regex-jit.cpp $(STATIC_LIB) $(wildcard include/regex/*.hpp)
-	$(CXX) $(CXX_FLAGS) $< $(STATIC_LIB) -o $@
+regex-jit: regex-jit.cpp $(BUILD_DIR)/regex.a $(wildcard include/regex/*.hpp)
+	$(CXX) $(CXX_FLAGS) $< $(BUILD_DIR)/regex.a -o $@
 
 .PHONY: clean
 clean:

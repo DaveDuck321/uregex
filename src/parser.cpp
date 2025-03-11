@@ -833,7 +833,7 @@ auto build_piece_fragment(Piece const &piece,
                    fragment = merge_fragments(fragment, next_fragment);
                  }
 
-                 size_t counter;
+                 size_t counter = 0;
                  if (range.lower != range.upper) {
                    counter = all_counters.size();
                    all_counters.push_back(match_type);

@@ -1,5 +1,6 @@
 #pragma once
 
+#include <algorithm>
 #include <initializer_list>
 #include <vector>
 
@@ -19,6 +20,7 @@ public:
       }
     }
     m_entries.push_back(entry);
+    std::sort(m_entries.begin(), m_entries.end());
   }
   constexpr auto operator+(SmallSet const &other) -> SmallSet {
     SmallSet result;

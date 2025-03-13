@@ -147,55 +147,67 @@ struct EvaluationState {
   }
 };
 
-auto compute_counters(size_t counters_out[], size_t const current_counters[],
-                      Edge const &edge, size_t counter_count) -> void {
-  ::memcpy(counters_out, current_counters, counter_count * sizeof(size_t));
-  for (auto counter : edge.counters) {
-    counters_out[counter] += 1;
-  }
-}
+auto replace_if_better(EvaluationState &state_to_update,
+                       EvaluationState const &current_state,
+                       size_t evaluating_id, RegexGraph const &graph,
+                       Edge const &edge, size_t source_offset) -> bool {
+  size_t const counter_count = state_to_update.counter_count;
+  size_t const node_index = edge.output->index;
+  size_t *out_counters = state_to_update.counters_for(node_index);
+  auto *out_groups = state_to_update.groups_for(node_index);
 
-auto replace_if_better(EvaluationState &state, RegexGraph const &graph,
-                       Edge const &edge, size_t const new_counters[],
-                       Group const previous_groups[], size_t source_offset)
-    -> bool {
-  size_t node_index = edge.output->index;
-  size_t *state_counters = state.counters_for(node_index);
-  auto *state_groups = state.groups_for(node_index);
+  size_t const *current_counters = current_state.counters_for(evaluating_id);
+  auto const *current_groups = current_state.groups_for(evaluating_id);
 
-  auto accept_new_transition = [&]() {
+  auto accept_new_transition = [&](auto counter_iter, size_t counter_offset) {
     // Copy over matching state
-    state.last_added[node_index] = source_offset;
-    ::memcpy(state_groups, previous_groups, state.group_count * sizeof(Group));
+    state_to_update.last_added[node_index] = source_offset;
+    ::memcpy(out_groups, current_groups,
+             state_to_update.group_count * sizeof(Group));
 
     // Adjust based on edge transition
-    ::memcpy(state_counters, new_counters,
-             state.counter_count * sizeof(size_t));
+    for (size_t i = counter_offset; i < counter_count; i += 1) {
+      size_t adjustment = 0;
+      if (counter_iter != edge.counters.end() && *counter_iter == i) {
+        adjustment = 1;
+        counter_iter++;
+      }
+      out_counters[i] = current_counters[i] + adjustment;
+    }
     for (auto group : edge.start_groups) {
-      state_groups[group].start_index = source_offset;
+      out_groups[group].start_index = source_offset;
     }
     for (auto group : edge.end_groups) {
-      state_groups[group].end_index = source_offset;
+      out_groups[group].end_index = source_offset;
     }
   };
 
-  if (state.last_added[node_index] != source_offset) {
+  auto counter_iter = edge.counters.begin();
+  if (state_to_update.last_added[node_index] != source_offset) {
     // Option is newer (by construction)
-    accept_new_transition();
+    accept_new_transition(counter_iter, 0);
     return true;
   }
 
   // Target is already up-to-date, should we replace?
-  for (size_t i = 0; i < state.counter_count; i += 1) {
-    if (state_counters[i] == new_counters[i]) {
+  for (size_t i = 0; i < counter_count; i += 1) {
+    size_t adjustment = 0;
+    if (counter_iter != edge.counters.end() && *counter_iter == i) {
+      adjustment = 1;
+      counter_iter++;
+    }
+    size_t new_counter = current_counters[i] + adjustment;
+
+    if (out_counters[i] == new_counter) {
       continue;
     }
 
     auto const type = graph.counters[i];
-    if ((type == Counter::non_greedy) ^ (new_counters[i] > state_counters[i])) {
-      accept_new_transition();
+    if ((type == Counter::non_greedy) ^ (new_counter > out_counters[i])) {
+      accept_new_transition(counter_iter, i);
+      return false;
     }
-    break;
+    return false;
   }
   return false;
 }
@@ -214,24 +226,21 @@ auto regex::evaluate(RegexGraph &graph, std::string_view string)
   next_to_evaluate.reserve(node_count);
 
   // Computation state x2 (swapped each generation)
-  auto counter_scratch = std::make_unique<size_t[]>(counter_count);
   auto state_1 = EvaluationState{node_count, counter_count, group_count};
   auto state_2 = EvaluationState{node_count, counter_count, group_count};
   auto *current_state = &state_1;
   auto *next_state = &state_2;
 
   for (auto const &edge : graph.entry->edges) {
-    compute_counters(counter_scratch.get(),
-                     next_state->counters_for(graph.entry->index), edge,
-                     next_state->counter_count);
-
-    bool is_new =
-        replace_if_better(*current_state, graph, edge, counter_scratch.get(),
-                          next_state->groups_for(edge.output->index), 0);
+    bool is_new = replace_if_better(*next_state, *current_state,
+                                    graph.entry->index, graph, edge, 0);
     if (is_new) {
-      evaluating.push_back(edge.output->index);
+      next_to_evaluate.push_back(edge.output->index);
     }
   }
+
+  std::swap(evaluating, next_to_evaluate);
+  std::swap(current_state, next_state);
 
   // Evaluate!
   size_t current_index = 0;
@@ -255,12 +264,9 @@ auto regex::evaluate(RegexGraph &graph, std::string_view string)
 
       if (result) {
         for (auto const &edge : evaluating_node->edges) {
-          compute_counters(counter_scratch.get(),
-                           current_state->counters_for(evaluating_id), edge,
-                           current_state->counter_count);
-          bool is_new = replace_if_better(
-              *next_state, graph, edge, counter_scratch.get(),
-              current_state->groups_for(evaluating_id), current_index);
+          bool is_new =
+              replace_if_better(*next_state, *current_state, evaluating_id,
+                                graph, edge, current_index);
           if (is_new) {
             next_to_evaluate.push_back(edge.output->index);
           }

@@ -159,7 +159,7 @@ inline auto replace_if_better(EvaluationState &state_to_update,
   size_t const counter_count = state_to_update.counter_count;
   size_t const group_count = state_to_update.group_count;
 
-  size_t const node_index = edge.output->index;
+  size_t const node_index = edge.output_index;
   CounterType *out_counters = state_to_update.counters_for(node_index);
   auto *out_groups = state_to_update.groups_for(node_index);
 
@@ -252,7 +252,7 @@ auto regex::evaluate(RegexGraph &graph, std::string_view string)
     bool is_new = replace_if_better(*next_state, *current_state,
                                     graph.entry->index, graph, edge, 0);
     if (is_new) {
-      next_to_evaluate.push_back(edge.output->index);
+      next_to_evaluate.push_back(edge.output_index);
     }
   }
 
@@ -285,7 +285,7 @@ auto regex::evaluate(RegexGraph &graph, std::string_view string)
               replace_if_better(*next_state, *current_state, evaluating_id,
                                 graph, edge, current_index);
           if (is_new) {
-            next_to_evaluate.push_back(edge.output->index);
+            next_to_evaluate.push_back(edge.output_index);
           }
         }
       }

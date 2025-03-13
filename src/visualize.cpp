@@ -2,6 +2,7 @@
 #include "regex/character_categories.hpp"
 #include "regex/nfa.hpp"
 
+#include <memory>
 #include <set>
 #include <sstream>
 #include <string>
@@ -95,11 +96,12 @@ auto unique_node_tag(Node const *node) -> std::string {
 }
 
 auto output_subgraph(std::ostream &out_stream,
+                     std::vector<std::unique_ptr<Node>> const &all_nodes,
                      std::set<Node const *> &already_graphed,
                      Node const *to_graph) -> void {
   already_graphed.insert(to_graph);
   for (auto const &edge : to_graph->edges) {
-    auto const *node = edge.output;
+    auto const *node = all_nodes[edge.output_index].get();
 
     std::string label;
     if (not edge.start_groups.empty()) {
@@ -116,7 +118,7 @@ auto output_subgraph(std::ostream &out_stream,
                unique_node_tag(to_graph), unique_node_tag(node), label);
 
     if (already_graphed.find(node) == already_graphed.end()) {
-      output_subgraph(out_stream, already_graphed, node);
+      output_subgraph(out_stream, all_nodes, already_graphed, node);
     }
   }
 }
@@ -138,7 +140,7 @@ auto regex::output_graph(std::ostream &out_stream, const RegexGraph &graph)
   }
 
   std::set<Node const *> already_graphed;
-  output_subgraph(out_stream, already_graphed, graph.entry);
+  output_subgraph(out_stream, graph.all_nodes, already_graphed, graph.entry);
 
   out_stream << "}" << std::endl;
 }

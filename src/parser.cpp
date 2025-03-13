@@ -723,7 +723,7 @@ auto merge_fragments(Fragment &lhs, Fragment &rhs) -> Fragment {
         end_groups.insert(group);
       }
       previous_output.node->edges.push_back({
-          .output = input.node,
+          .output_index = input.node->index,
           .start_groups = input.start_groups,
           .end_groups = end_groups,
           .counters = input.counters,
@@ -794,7 +794,7 @@ auto build_piece_fragment(Piece const &piece,
                    input.counters.insert(counter);
                    for (auto &output : atom_fragment.outputs) {
                      output.node->edges.push_back({
-                         .output = input.node,
+                         .output_index = input.node->index,
                          .start_groups = input.start_groups,
                          .end_groups = input.end_groups + output.end_groups,
                          .counters = input.counters,
@@ -814,7 +814,7 @@ auto build_piece_fragment(Piece const &piece,
                    input.counters.insert(counter);
                    for (auto &output : atom_fragment.outputs) {
                      output.node->edges.push_back({
-                         .output = input.node,
+                         .output_index = input.node->index,
                          .start_groups = input.start_groups,
                          .end_groups = input.end_groups + output.end_groups,
                          .counters = input.counters,

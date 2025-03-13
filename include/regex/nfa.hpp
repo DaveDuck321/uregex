@@ -46,7 +46,7 @@ struct Condition {
 
 struct Node;
 struct Edge {
-  Node const *output;
+  size_t output_index;
   SmallSet<size_t> start_groups;
   SmallSet<size_t> end_groups;
   SmallSet<size_t> counters;

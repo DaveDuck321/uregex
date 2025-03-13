@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <initializer_list>
+#include <limits>
 #include <vector>
 
 namespace regex {
@@ -10,8 +11,13 @@ template <typename T> class SmallSet {
   std::vector<T> m_entries;
 
 public:
-  constexpr SmallSet() = default;
-  constexpr SmallSet(std::initializer_list<T> input) : m_entries(input) {}
+  constexpr SmallSet() : m_entries() {
+    m_entries.push_back(std::numeric_limits<T>::max());
+  }
+
+  constexpr SmallSet(std::initializer_list<T> input) : m_entries(input) {
+    m_entries.push_back(std::numeric_limits<T>::max());
+  }
 
   constexpr auto insert(T entry) -> void {
     for (auto const &other_entry : m_entries) {
@@ -37,7 +43,9 @@ public:
   constexpr auto empty() const -> bool { return m_entries.empty(); }
 
   constexpr auto begin() const { return m_entries.begin(); }
-  constexpr auto end() const { return m_entries.end(); }
-  constexpr auto back() const -> T const & { return m_entries.back(); };
+  constexpr auto end() const { return m_entries.end() - 1; }
+  constexpr auto back() const -> T const & {
+    return m_entries[m_entries.size() - 2];
+  };
 };
 } // namespace regex

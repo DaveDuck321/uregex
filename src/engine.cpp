@@ -6,6 +6,7 @@
 #include <array>
 #include <cassert>
 #include <cstddef>
+#include <limits>
 #include <memory>
 #include <optional>
 #include <string.h>
@@ -118,28 +119,32 @@ constexpr auto evaluate_condition(Codepoint codepoint,
   return expression.is_complement;
 }
 
+using CounterType = unsigned;
+using IndexType = unsigned;
+static constexpr auto max_index = std::numeric_limits<IndexType>::max();
+
 struct Group {
-  size_t start_index;
-  size_t end_index;
+  IndexType start_index;
+  IndexType end_index;
 };
 struct EvaluationState {
-  std::unique_ptr<size_t[]> last_added;
-  std::unique_ptr<size_t[]> counts;
+  std::unique_ptr<IndexType[]> last_added;
+  std::unique_ptr<CounterType[]> counts;
   std::unique_ptr<Group[]> groups;
 
   size_t counter_count;
   size_t group_count;
 
   EvaluationState(size_t node_count, size_t counter_count, size_t group_count)
-      : last_added{std::make_unique<size_t[]>(node_count)},
-        counts{std::make_unique<size_t[]>(node_count * counter_count)},
+      : last_added{std::make_unique<IndexType[]>(node_count)},
+        counts{std::make_unique<CounterType[]>(node_count * counter_count)},
         groups{std::make_unique<Group[]>(node_count * group_count)},
         counter_count{counter_count}, group_count{group_count} {
-    ::memset(last_added.get(), -1, node_count * sizeof(size_t));
-    ::memset(groups.get(), -1, node_count * group_count * sizeof(size_t));
+    ::memset(last_added.get(), -1, node_count * sizeof(IndexType));
+    ::memset(groups.get(), -1, node_count * group_count * sizeof(Group));
   }
 
-  constexpr auto counters_for(size_t state_id) const -> size_t * {
+  constexpr auto counters_for(size_t state_id) const -> CounterType * {
     return &counts[state_id * counter_count];
   }
   constexpr auto groups_for(size_t state_id) const -> Group * {
@@ -147,18 +152,19 @@ struct EvaluationState {
   }
 };
 
-auto replace_if_better(EvaluationState &state_to_update,
-                       EvaluationState const &current_state,
-                       size_t evaluating_id, RegexGraph const &graph,
-                       Edge const &edge, size_t source_offset) -> bool {
+inline auto replace_if_better(EvaluationState &state_to_update,
+                              EvaluationState const &current_state,
+                              size_t evaluating_id, RegexGraph const &graph,
+                              Edge const &edge, size_t source_offset) -> bool {
   size_t const counter_count = state_to_update.counter_count;
   size_t const group_count = state_to_update.group_count;
 
   size_t const node_index = edge.output->index;
-  size_t *out_counters = state_to_update.counters_for(node_index);
+  CounterType *out_counters = state_to_update.counters_for(node_index);
   auto *out_groups = state_to_update.groups_for(node_index);
 
-  size_t const *current_counters = current_state.counters_for(evaluating_id);
+  CounterType const *current_counters =
+      current_state.counters_for(evaluating_id);
   auto const *current_groups = current_state.groups_for(evaluating_id);
 
   auto counter_iter = edge.counters.begin();
@@ -172,7 +178,7 @@ auto replace_if_better(EvaluationState &state_to_update,
     // Adjust based on edge transition
     for (size_t i = counter_offset; i < counter_count; i += 1) {
       size_t adjustment = 0;
-      if (counter_iter != edge.counters.end() && *counter_iter == i) {
+      if (*counter_iter == i) {
         adjustment = 1;
         counter_iter++;
       }
@@ -181,14 +187,12 @@ auto replace_if_better(EvaluationState &state_to_update,
 
     for (size_t group = 0; group < group_count; group += 1) {
       Group to_write = current_groups[group];
-      if (start_groups_iter != edge.start_groups.end() &&
-          *start_groups_iter == group) {
+      if (*start_groups_iter == group) {
         to_write.start_index = source_offset;
         start_groups_iter++;
       }
 
-      if (end_groups_iter != edge.end_groups.end() &&
-          *end_groups_iter == group) {
+      if (*end_groups_iter == group) {
         to_write.end_index = source_offset;
         end_groups_iter++;
       }
@@ -205,7 +209,7 @@ auto replace_if_better(EvaluationState &state_to_update,
   // Target is already up-to-date, should we replace?
   for (size_t i = 0; i < counter_count; i += 1) {
     size_t adjustment = 0;
-    if (counter_iter != edge.counters.end() && *counter_iter == i) {
+    if (*counter_iter == i) {
       adjustment = 1;
       counter_iter++;
     }
@@ -301,16 +305,16 @@ auto regex::evaluate(RegexGraph &graph, std::string_view string)
     auto const *groups = current_state->groups_for(graph.match->index);
     for (size_t group_id = 0; group_id < group_count; group_id += 1) {
       auto const &group = groups[group_id];
-      if (group.start_index != ~0UL && group.end_index != ~0UL) {
+      if (group.start_index != max_index && group.end_index != max_index) {
         result.groups.push_back(
             MatchResult::Group{group.start_index, group.end_index});
-      } else if (group.end_index != ~0UL) {
+      } else if (group.end_index != max_index) {
         // Zero length match
         result.groups.push_back(
             MatchResult::Group{group.end_index, group.end_index});
       } else {
         // Unmatched group
-        assert(group.start_index == ~0UL);
+        assert(group.start_index == max_index);
         result.groups.push_back(std::nullopt);
       }
     }

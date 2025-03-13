@@ -152,6 +152,8 @@ auto replace_if_better(EvaluationState &state_to_update,
                        size_t evaluating_id, RegexGraph const &graph,
                        Edge const &edge, size_t source_offset) -> bool {
   size_t const counter_count = state_to_update.counter_count;
+  size_t const group_count = state_to_update.group_count;
+
   size_t const node_index = edge.output->index;
   size_t *out_counters = state_to_update.counters_for(node_index);
   auto *out_groups = state_to_update.groups_for(node_index);
@@ -159,11 +161,13 @@ auto replace_if_better(EvaluationState &state_to_update,
   size_t const *current_counters = current_state.counters_for(evaluating_id);
   auto const *current_groups = current_state.groups_for(evaluating_id);
 
-  auto accept_new_transition = [&](auto counter_iter, size_t counter_offset) {
+  auto counter_iter = edge.counters.begin();
+
+  auto accept_new_transition = [&](size_t counter_offset) {
     // Copy over matching state
+    auto start_groups_iter = edge.start_groups.begin();
+    auto end_groups_iter = edge.end_groups.begin();
     state_to_update.last_added[node_index] = source_offset;
-    ::memcpy(out_groups, current_groups,
-             state_to_update.group_count * sizeof(Group));
 
     // Adjust based on edge transition
     for (size_t i = counter_offset; i < counter_count; i += 1) {
@@ -174,18 +178,27 @@ auto replace_if_better(EvaluationState &state_to_update,
       }
       out_counters[i] = current_counters[i] + adjustment;
     }
-    for (auto group : edge.start_groups) {
-      out_groups[group].start_index = source_offset;
-    }
-    for (auto group : edge.end_groups) {
-      out_groups[group].end_index = source_offset;
+
+    for (size_t group = 0; group < group_count; group += 1) {
+      Group to_write = current_groups[group];
+      if (start_groups_iter != edge.start_groups.end() &&
+          *start_groups_iter == group) {
+        to_write.start_index = source_offset;
+        start_groups_iter++;
+      }
+
+      if (end_groups_iter != edge.end_groups.end() &&
+          *end_groups_iter == group) {
+        to_write.end_index = source_offset;
+        end_groups_iter++;
+      }
+      out_groups[group] = to_write;
     }
   };
 
-  auto counter_iter = edge.counters.begin();
   if (state_to_update.last_added[node_index] != source_offset) {
     // Option is newer (by construction)
-    accept_new_transition(counter_iter, 0);
+    accept_new_transition(0);
     return true;
   }
 
@@ -204,7 +217,7 @@ auto replace_if_better(EvaluationState &state_to_update,
 
     auto const type = graph.counters[i];
     if ((type == Counter::non_greedy) ^ (new_counter > out_counters[i])) {
-      accept_new_transition(counter_iter, i);
+      accept_new_transition(i);
       return false;
     }
     return false;

@@ -33,6 +33,7 @@ public:
     return result;
   }
 
+  constexpr auto size() const -> size_t { return m_entries.size(); }
   constexpr auto empty() const -> bool { return m_entries.empty(); }
 
   constexpr auto begin() const { return m_entries.begin(); }

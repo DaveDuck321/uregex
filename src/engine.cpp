@@ -155,7 +155,7 @@ struct EvaluationState {
 inline auto replace_if_better(EvaluationState &state_to_update,
                               EvaluationState const &current_state,
                               size_t evaluating_id, RegexGraph const &graph,
-                              Edge const &edge, size_t source_offset) -> bool {
+                              Edge const &edge, size_t source_offset) -> void {
   size_t const counter_count = state_to_update.counter_count;
   size_t const group_count = state_to_update.group_count;
 
@@ -203,7 +203,7 @@ inline auto replace_if_better(EvaluationState &state_to_update,
   if (state_to_update.last_added[node_index] != source_offset) {
     // Option is newer (by construction)
     accept_new_transition(0);
-    return true;
+    return;
   }
 
   // Target is already up-to-date, should we replace?
@@ -222,11 +222,9 @@ inline auto replace_if_better(EvaluationState &state_to_update,
     auto const type = graph.counters[i];
     if ((type == Counter::non_greedy) ^ (new_counter > out_counters[i])) {
       accept_new_transition(i);
-      return false;
     }
-    return false;
+    return;
   }
-  return false;
 }
 } // namespace
 
@@ -237,10 +235,8 @@ auto regex::evaluate(RegexGraph &graph, std::string_view string)
   size_t const group_count = graph.number_of_groups;
 
   // Work queues
-  std::vector<size_t> evaluating;
-  std::vector<size_t> next_to_evaluate;
-  evaluating.reserve(node_count);
-  next_to_evaluate.reserve(node_count);
+  auto evaluating = std::make_unique<bool[]>(node_count);
+  auto next_to_evaluate = std::make_unique<bool[]>(node_count);
 
   // Computation state x2 (swapped each generation)
   auto state_1 = EvaluationState{node_count, counter_count, group_count};
@@ -249,11 +245,9 @@ auto regex::evaluate(RegexGraph &graph, std::string_view string)
   auto *next_state = &state_2;
 
   for (auto const &edge : graph.entry->edges) {
-    bool is_new = replace_if_better(*next_state, *current_state,
-                                    graph.entry->index, graph, edge, 0);
-    if (is_new) {
-      next_to_evaluate.push_back(edge.output_index);
-    }
+    replace_if_better(*next_state, *current_state, graph.entry->index, graph,
+                      edge, 0);
+    next_to_evaluate[edge.output_index] = true;
   }
 
   std::swap(evaluating, next_to_evaluate);
@@ -261,39 +255,38 @@ auto regex::evaluate(RegexGraph &graph, std::string_view string)
 
   // Evaluate!
   size_t current_index = 0;
-  while (current_index < string.size() && evaluating.size() > 0) {
+  while (current_index < string.size()) {
     size_t codepoint_size = 0;
     Codepoint codepoint =
         parse_utf8_char(string.substr(current_index), codepoint_size);
     current_index += codepoint_size;
 
-    while (evaluating.size() > 0) {
-      auto evaluating_id = evaluating.back();
-      evaluating.pop_back();
+    for (size_t evaluating_id = 0; evaluating_id < node_count;
+         evaluating_id += 1) {
+      auto const &evaluating_node = *graph.all_nodes[evaluating_id];
+      if (not evaluating[evaluating_id]) {
+        continue;
+      }
 
-      auto const &evaluating_node = graph.all_nodes[evaluating_id];
+      evaluating[evaluating_id] = false;
 
       auto result = std::visit(
           [&](auto condition) {
             return evaluate_condition(codepoint, condition);
           },
-          evaluating_node->condition.type);
+          evaluating_node.condition.type);
 
       if (result) {
-        for (auto const &edge : evaluating_node->edges) {
-          bool is_new =
-              replace_if_better(*next_state, *current_state, evaluating_id,
-                                graph, edge, current_index);
-          if (is_new) {
-            next_to_evaluate.push_back(edge.output_index);
-          }
+        for (auto const &edge : evaluating_node.edges) {
+          replace_if_better(*next_state, *current_state, evaluating_id, graph,
+                            edge, current_index);
+          next_to_evaluate[edge.output_index] = true;
         }
       }
     }
 
     std::swap(evaluating, next_to_evaluate);
     std::swap(current_state, next_state);
-    next_to_evaluate.clear();
   }
 
   if (current_index == string.size() &&

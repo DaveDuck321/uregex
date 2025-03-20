@@ -1,5 +1,4 @@
-#include "regex/engine.hpp"
-#include "regex/parser.hpp"
+#include "regex/regex.hpp"
 #include "testing.hpp"
 
 #include <cctype>
@@ -11,8 +10,8 @@ using namespace std::literals;
 namespace {
 auto match(std::string_view regex, std::string_view string)
     -> regex::MatchResult {
-  auto compiled = regex::parse(regex);
-  return regex::evaluate(compiled, string);
+  auto graph = regex::parse(regex);
+  return graph.evaluate(string);
 }
 } // namespace
 
@@ -136,7 +135,6 @@ TEST_CASE(greedy_match_question_mark, "[regex][groups]") {
   CHECK(result.groups[0]->start_index == 0);
   CHECK(result.groups[0]->end_index == 1);
 }
-
 
 TEST_CASE(lazy_match_range, "[regex][groups]") {
   auto result = match(R"((a{1,6}?)a+)", "aaaaaa");

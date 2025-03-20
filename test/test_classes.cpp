@@ -1,5 +1,4 @@
-#include "regex/engine.hpp"
-#include "regex/parser.hpp"
+#include "regex/regex.hpp"
 #include "testing.hpp"
 
 #include <cctype>
@@ -12,8 +11,8 @@ using namespace std::literals;
 
 namespace {
 auto does_match(std::string_view regex, std::string_view string) -> bool {
-  auto compiled = regex::parse(regex);
-  return regex::evaluate(compiled, string);
+  auto graph = regex::parse(regex);
+  return graph.evaluate(string);
 }
 } // namespace
 
@@ -46,21 +45,34 @@ TEST_CASE(basic_alphanumeric, "[regex][classes]") {
 }
 
 TEST_CASE(unicode_categories, "[regex][classes][unicode]") {
-  const std::map<std::string, regex::Codepoint> examples_from_category = {
-      {"Cc", regex::Codepoint{0x0085}}, {"Cf", regex::Codepoint{0x206D}},
-      {"Ll", regex::Codepoint{"ꮉ"}},    {"Lm", regex::Codepoint{"𖭂"}},
-      {"Lo", regex::Codepoint{"ࠈ"}},    {"Lt", regex::Codepoint{"ᾮ"}},
-      {"Lu", regex::Codepoint{"A"}},    {"Mc", regex::Codepoint{"ꦾ"}},
-      {"Me", regex::Codepoint{"꙲"}},     {"Mn", regex::Codepoint{0x094D}},
-      {"Nd", regex::Codepoint{"🯷"}},    {"Nl", regex::Codepoint{"Ⅻ"}},
-      {"No", regex::Codepoint{"㈥"}},   {"Pc", regex::Codepoint{"︴"}},
-      {"Pd", regex::Codepoint{"-"}},    {"Pe", regex::Codepoint{")"}},
-      {"Pf", regex::Codepoint{"⸡"}},    {"Pi", regex::Codepoint{"“"}},
-      {"Po", regex::Codepoint{"@"}},    {"Ps", regex::Codepoint{"("}},
-      {"Sc", regex::Codepoint{"$"}},    {"Sk", regex::Codepoint{"﮶"}},
-      {"Sm", regex::Codepoint{"⅀"}},    {"So", regex::Codepoint{"⌁"}},
-      {"Zl", regex::Codepoint{0x2028}}, {"Zp", regex::Codepoint{0x2029}},
-      {"Zs", regex::Codepoint{" "}},
+  const std::map<std::string, std::string> examples_from_category = {
+      {"Cc", "\xc2\x85"},
+      {"Cf", "\xe2\x81\xad"},
+      {"Ll", "ꮉ"},
+      {"Lm", "𖭂"},
+      {"Lo", "ࠈ"},
+      {"Lt", "ᾮ"},
+      {"Lu", "A"},
+      {"Mc", "ꦾ"},
+      {"Me", "꙲"},
+      {"Mn", "\xe0\xa5\x8d"},
+      {"Nd", "🯷"},
+      {"Nl", "Ⅻ"},
+      {"No", "㈥"},
+      {"Pc", "︴"},
+      {"Pd", "-"},
+      {"Pe", ")"},
+      {"Pf", "⸡"},
+      {"Pi", "“"},
+      {"Po", "@"},
+      {"Ps", "("},
+      {"Sc", "$"},
+      {"Sk", "﮶"},
+      {"Sm", "⅀"},
+      {"So", "⌁"},
+      {"Zl", "\xe2\x80\xa8"},
+      {"Zp", "\xe2\x80\xa9"},
+      {"Zs", " "},
   };
 
   // Assert that each example matches one and ONLY one category
@@ -69,19 +81,18 @@ TEST_CASE(unicode_categories, "[regex][classes][unicode]") {
     auto regex = std::format("\\p{{{}}}", test_category);
     auto complement_regex = std::format("\\P{{{}}}", test_category);
 
-    auto compiled = regex::parse(regex);
-    auto complied_complement = regex::parse(complement_regex);
+    auto graph = regex::parse(regex);
+    auto complement = regex::parse(complement_regex);
 
     for (auto const &[_, other_codepoint] : examples_from_category) {
-      std::string test_string;
-      regex::codepoint_to_utf8(test_string, other_codepoint);
+      std::string test_string = other_codepoint;
 
       if (matching_codepoint == other_codepoint) {
-        CHECK(regex::evaluate(compiled, test_string));
-        CHECK(!regex::evaluate(complied_complement, test_string));
+        CHECK(graph.evaluate(test_string));
+        CHECK(!complement.evaluate(test_string));
       } else {
-        CHECK(!regex::evaluate(compiled, test_string));
-        CHECK(regex::evaluate(complied_complement, test_string));
+        CHECK(!graph.evaluate(test_string));
+        CHECK(complement.evaluate(test_string));
       }
     }
   }

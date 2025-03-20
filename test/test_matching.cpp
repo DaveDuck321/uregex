@@ -1,5 +1,4 @@
-#include "regex/engine.hpp"
-#include "regex/parser.hpp"
+#include "regex/regex.hpp"
 #include "testing.hpp"
 
 #include <cctype>
@@ -10,8 +9,8 @@ using namespace std::literals;
 
 namespace {
 auto does_match(std::string_view regex, std::string_view string) -> bool {
-  auto compiled = regex::parse(regex);
-  return regex::evaluate(compiled, string);
+  auto graph = regex::parse(regex);
+  return graph.evaluate(string);
 }
 } // namespace
 

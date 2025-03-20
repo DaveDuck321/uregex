@@ -1,8 +1,9 @@
-#include "regex/parser.hpp"
-#include "regex/character_categories.hpp"
-#include "regex/common.hpp"
-#include "regex/nfa.hpp"
-#include "regex/small_set.hpp"
+#include "regex/regex.hpp"
+
+#include "private/character_categories.hpp"
+#include "private/meta.hpp"
+#include "private/nfa.hpp"
+#include "private/small_set.hpp"
 
 #include <cassert>
 #include <cctype>
@@ -464,7 +465,7 @@ constexpr auto parse_char_or_char_class(Cursor &cursor)
 
 constexpr auto parse_character_class_expression(Cursor &cursor)
     -> Atom::CustomClassExpression {
-  Atom::CustomClassExpression result;
+  Atom::CustomClassExpression result  {};
   cursor.eat_or_throw('[');
 
   // Start
@@ -613,7 +614,7 @@ constexpr auto allocate_node(std::vector<std::unique_ptr<Node>> &all_nodes,
       Condition::CustomExpression::CustomExpressionVariant;
 
   auto condition = std::visit(
-      Overload{
+      meta::Overload{
           [&](Any any) { return Condition{any}; },
           [&](Codepoint codepoint) { return Condition{codepoint}; },
           [&](Atom::CharacterClass character_class) {
@@ -624,7 +625,7 @@ constexpr auto allocate_node(std::vector<std::unique_ptr<Node>> &all_nodes,
             condition.is_complement = expr.is_complement;
             for (auto const &expression : expr.expression) {
               ExpressionVariant expression_variant = std::visit(
-                  Overload{
+                  meta::Overload{
                       [&](Codepoint cp) { return ExpressionVariant{cp}; },
                       [&](Range range) { return ExpressionVariant{range}; },
                       [&](Atom::CharacterClass char_class) {
@@ -784,87 +785,88 @@ auto build_piece_fragment(Piece const &piece,
   Counter match_type =
       piece.quantifier.is_greedy ? Counter::greedy : Counter::non_greedy;
   return std::visit(
-      Overload{[&](Quantifier::NoneOrMore) {
-                 size_t counter = all_counters.size();
-                 all_counters.push_back(match_type);
+      meta::Overload{
+          [&](Quantifier::NoneOrMore) {
+            size_t counter = all_counters.size();
+            all_counters.push_back(match_type);
 
-                 auto atom_fragment = build_atom_fragment(piece.atom, all_nodes,
-                                                          all_counters, groups);
-                 for (auto &input : atom_fragment.inputs) {
-                   input.counters.insert(counter);
-                   for (auto &output : atom_fragment.outputs) {
-                     output.node->edges.push_back({
-                         .output_index = input.node->index,
-                         .start_groups = input.start_groups,
-                         .end_groups = input.end_groups + output.end_groups,
-                         .counters = input.counters,
-                     });
-                   }
-                 }
-                 atom_fragment.passthrough.push_back({});
-                 return atom_fragment;
-               },
-               [&](Quantifier::OneOrMore) {
-                 size_t counter = all_counters.size();
-                 all_counters.push_back(match_type);
+            auto atom_fragment = build_atom_fragment(piece.atom, all_nodes,
+                                                     all_counters, groups);
+            for (auto &input : atom_fragment.inputs) {
+              input.counters.insert(counter);
+              for (auto &output : atom_fragment.outputs) {
+                output.node->edges.push_back({
+                    .output_index = input.node->index,
+                    .start_groups = input.start_groups,
+                    .end_groups = input.end_groups + output.end_groups,
+                    .counters = input.counters,
+                });
+              }
+            }
+            atom_fragment.passthrough.push_back({});
+            return atom_fragment;
+          },
+          [&](Quantifier::OneOrMore) {
+            size_t counter = all_counters.size();
+            all_counters.push_back(match_type);
 
-                 auto atom_fragment = build_atom_fragment(piece.atom, all_nodes,
-                                                          all_counters, groups);
-                 for (auto &input : atom_fragment.inputs) {
-                   input.counters.insert(counter);
-                   for (auto &output : atom_fragment.outputs) {
-                     output.node->edges.push_back({
-                         .output_index = input.node->index,
-                         .start_groups = input.start_groups,
-                         .end_groups = input.end_groups + output.end_groups,
-                         .counters = input.counters,
-                     });
-                   }
-                 }
-                 return atom_fragment;
-               },
-               [&](Quantifier::Range range) {
-                 Fragment fragment;
-                 fragment.passthrough = {{}};
+            auto atom_fragment = build_atom_fragment(piece.atom, all_nodes,
+                                                     all_counters, groups);
+            for (auto &input : atom_fragment.inputs) {
+              input.counters.insert(counter);
+              for (auto &output : atom_fragment.outputs) {
+                output.node->edges.push_back({
+                    .output_index = input.node->index,
+                    .start_groups = input.start_groups,
+                    .end_groups = input.end_groups + output.end_groups,
+                    .counters = input.counters,
+                });
+              }
+            }
+            return atom_fragment;
+          },
+          [&](Quantifier::Range range) {
+            Fragment fragment;
+            fragment.passthrough = {{}};
 
-                 for (size_t i = 0; i < range.lower; i += 1) {
-                   auto next_fragment = build_atom_fragment(
-                       piece.atom, all_nodes, all_counters, groups);
-                   fragment = merge_fragments(fragment, next_fragment);
-                 }
+            for (size_t i = 0; i < range.lower; i += 1) {
+              auto next_fragment = build_atom_fragment(piece.atom, all_nodes,
+                                                       all_counters, groups);
+              fragment = merge_fragments(fragment, next_fragment);
+            }
 
-                 size_t counter = 0;
-                 if (range.lower != range.upper) {
-                   counter = all_counters.size();
-                   all_counters.push_back(match_type);
-                 }
+            size_t counter = 0;
+            if (range.lower != range.upper) {
+              counter = all_counters.size();
+              all_counters.push_back(match_type);
+            }
 
-                 std::vector<Fragment::Output> final_outputs;
-                 std::vector<Fragment::Passthrough> final_passthroughs;
-                 for (size_t i = range.lower; i < range.upper; i += 1) {
-                   auto next_fragment = build_atom_fragment(
-                       piece.atom, all_nodes, all_counters, groups);
+            std::vector<Fragment::Output> final_outputs;
+            std::vector<Fragment::Passthrough> final_passthroughs;
+            for (size_t i = range.lower; i < range.upper; i += 1) {
+              auto next_fragment = build_atom_fragment(piece.atom, all_nodes,
+                                                       all_counters, groups);
 
-                   for (auto &input : next_fragment.inputs) {
-                     input.counters.insert(counter);
-                   }
-                   for (auto &output : fragment.outputs) {
-                     final_outputs.push_back(output);
-                   }
-                   for (auto &passthrough : fragment.passthrough) {
-                     final_passthroughs.push_back(passthrough);
-                   }
-                   fragment = merge_fragments(fragment, next_fragment);
-                 }
+              for (auto &input : next_fragment.inputs) {
+                input.counters.insert(counter);
+              }
+              for (auto &output : fragment.outputs) {
+                final_outputs.push_back(output);
+              }
+              for (auto &passthrough : fragment.passthrough) {
+                final_passthroughs.push_back(passthrough);
+              }
+              fragment = merge_fragments(fragment, next_fragment);
+            }
 
-                 for (auto &output : final_outputs) {
-                   fragment.outputs.push_back(output);
-                 }
-                 for (auto &passthrough : final_passthroughs) {
-                   fragment.passthrough.push_back(passthrough);
-                 }
-                 return fragment;
-               }},
+            for (auto &output : final_outputs) {
+              fragment.outputs.push_back(output);
+            }
+            for (auto &passthrough : final_passthroughs) {
+              fragment.passthrough.push_back(passthrough);
+            }
+            return fragment;
+          }},
       piece.quantifier.type);
 }
 
@@ -939,11 +941,11 @@ auto regex::parse(std::string_view regex_string) -> RegexGraph {
   result = merge_fragments(result, match_fragment);
   assert(result.passthrough.empty());
 
-  return {
+  return RegexGraph{std::unique_ptr<RegexGraphImpl>(new RegexGraphImpl{
       .all_nodes = std::move(all_nodes),
       .counters = std::move(all_counters),
       .entry = entry_node,
       .match = match_node,
       .number_of_groups = number_of_groups,
-  };
+  })};
 }

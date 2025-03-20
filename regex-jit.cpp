@@ -1,6 +1,4 @@
-#include "regex/engine.hpp"
-#include "regex/parser.hpp"
-#include "regex/visualize.hpp"
+#include "regex/regex.hpp"
 
 #include <cassert>
 #include <cctype>
@@ -18,11 +16,11 @@ int main(int argc, char *argv[]) {
   std::string_view match_string = argv[2];
 
   // Parse
-  auto compiled = regex::parse(regex_string);
-  regex::output_graph(std::cout, compiled);
+  auto graph = regex::parse(regex_string);
+  graph.visualize(std::cout);
 
   // Evaluate
-  auto result = regex::evaluate(compiled, match_string);
+  auto result = graph.evaluate(match_string);
   if (result) {
     std::println(std::cerr, "Match!");
     for (auto [index, group] : std::ranges::views::enumerate(result.groups)) {

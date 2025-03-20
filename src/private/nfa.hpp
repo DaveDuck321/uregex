@@ -1,8 +1,8 @@
 #pragma once
 
-#include "character_categories.hpp"
-#include "common.hpp"
-#include "small_set.hpp"
+#include "private/character_categories.hpp"
+#include "private/meta.hpp"
+#include "private/small_set.hpp"
 
 #include <cstddef>
 #include <memory>
@@ -63,7 +63,7 @@ enum class Counter {
   non_greedy,
 };
 
-struct RegexGraph {
+struct RegexGraphImpl {
   std::vector<std::unique_ptr<Node>> all_nodes;
   std::vector<Counter> counters;
   Node const *entry;

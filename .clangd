@@ -1,4 +1,9 @@
 CompileFlags:
   Add:
     - "-I../include/"
+    - "-I../../include/"
+    - "-I../src/"
+    - "-I../../src/"
+    - "-Isrc/"
     - "-Iinclude"
+    - "-std=c++26"

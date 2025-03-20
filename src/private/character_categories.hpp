@@ -1,6 +1,7 @@
 #pragma once
 
-#include "unicode.hpp"
+#include "private/meta.hpp"
+#include "private/unicode.hpp"
 
 #include <cstdint>
 #include <string_view>

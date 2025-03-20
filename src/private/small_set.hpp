@@ -39,6 +39,10 @@ public:
     return result;
   }
 
+  constexpr auto contains(const T &item) const -> bool {
+    return std::find(m_entries.begin(), m_entries.end(), item) !=
+           m_entries.end();
+  }
   constexpr auto size() const -> size_t { return m_entries.size(); }
   constexpr auto empty() const -> bool { return m_entries.empty(); }
 

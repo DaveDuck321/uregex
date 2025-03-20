@@ -1,6 +1,7 @@
-#include "regex/visualize.hpp"
-#include "regex/character_categories.hpp"
-#include "regex/nfa.hpp"
+#include "regex/regex.hpp"
+
+#include "private/character_categories.hpp"
+#include "private/nfa.hpp"
 
 #include <memory>
 #include <set>
@@ -124,11 +125,10 @@ auto output_subgraph(std::ostream &out_stream,
 }
 } // namespace
 
-auto regex::output_graph(std::ostream &out_stream, const RegexGraph &graph)
-    -> void {
+auto regex::RegexGraph::visualize(std::ostream &out_stream) const -> void {
   out_stream << "digraph {\n";
 
-  for (auto const &node : graph.all_nodes) {
+  for (auto const &node : impl_->all_nodes) {
     auto const condition_fmt = std::visit(
         [](auto type) { return pretty_format(type); }, node->condition.type);
 
@@ -140,7 +140,7 @@ auto regex::output_graph(std::ostream &out_stream, const RegexGraph &graph)
   }
 
   std::set<Node const *> already_graphed;
-  output_subgraph(out_stream, graph.all_nodes, already_graphed, graph.entry);
+  output_subgraph(out_stream, impl_->all_nodes, already_graphed, impl_->entry);
 
   out_stream << "}" << std::endl;
 }

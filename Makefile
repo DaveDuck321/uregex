@@ -5,15 +5,17 @@ CXX_FLAGS := -g -std=c++26 -Wall -Wpedantic -Werror -Wextra
 CXX_FLAGS += -Iinclude
 
 DEBUG_CXX_FLAGS += -O0 -fsanitize=undefined -fsanitize=address
-RELEASE_CXX_FLAGS += -O3 -march=native -mtune=native
+RELEASE_CXX_FLAGS += -O3
+LIB_CXX_FLAGS += -Isrc/
 
 BUILD_DIR := build
 
 LIB_SOURCES = \
 	src/engine.cpp \
 	src/parser.cpp \
+	src/regex.cpp \
+	src/unicode.cpp \
 	src/visualize.cpp \
-	src/unicode.cpp
 
 LIB_DEBUG_OBJECTS = $(patsubst src/%, $(BUILD_DIR)/%, $(patsubst %.cpp, %.O0.o, $(LIB_SOURCES)))
 LIB_RELEASE_OBJECTS = $(patsubst src/%, $(BUILD_DIR)/%, $(patsubst %.cpp, %.O3.o, $(LIB_SOURCES)))
@@ -37,17 +39,17 @@ $(BUILD_DIR):
 
 -include $(DEP_INCLUDES)
 $(BUILD_DIR)/%.O0.o: src/%.cpp | $(BUILD_DIR)
-	$(CXX) -MMD $(CXX_FLAGS) $(DEBUG_CXX_FLAGS) -c $< -o $@
+	$(CXX) -MMD $(CXX_FLAGS) $(DEBUG_CXX_FLAGS) $(LIB_CXX_FLAGS) -c $< -o $@
 
 $(BUILD_DIR)/%.O3.o: src/%.cpp | $(BUILD_DIR)
-	$(CXX) -MMD $(CXX_FLAGS) $(RELEASE_CXX_FLAGS) -c $< -o $@
+	$(CXX) -MMD $(CXX_FLAGS) $(RELEASE_CXX_FLAGS) $(LIB_CXX_FLAGS) -c $< -o $@
 
 $(BUILD_DIR)/unicode.O0.o: src/unicode.cpp $(BUILD_DIR)/unicode.bin | $(BUILD_DIR)
-	$(CXX) -MMD $(CXX_FLAGS) $(DEBUG_CXX_FLAGS) -c $< -o $@
+	$(CXX) -MMD $(CXX_FLAGS) $(DEBUG_CXX_FLAGS) $(LIB_CXX_FLAGS) -c $< -o $@
 	$(OBJCOPY) $@ --update-section unicode_category_data=$(BUILD_DIR)/unicode.bin
 
 $(BUILD_DIR)/unicode.O3.o: src/unicode.cpp $(BUILD_DIR)/unicode.bin | $(BUILD_DIR)
-	$(CXX) -MMD $(CXX_FLAGS) $(RELEASE_CXX_FLAGS) -c $< -o $@
+	$(CXX) -MMD $(CXX_FLAGS) $(RELEASE_CXX_FLAGS) $(LIB_CXX_FLAGS) -c $< -o $@
 	$(OBJCOPY) $@ --update-section unicode_category_data=$(BUILD_DIR)/unicode.bin
 
 $(BUILD_DIR)/libregex.O0.a: $(LIB_DEBUG_OBJECTS)

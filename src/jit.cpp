@@ -4,6 +4,7 @@
 #include "private/evaluation.hpp"
 #include "private/jit.hpp"
 #include "private/nfa.hpp"
+#include "private/unicode.hpp"
 
 #include <array>
 #include <cassert>
@@ -13,6 +14,7 @@
 #include <memory>
 #include <ranges>
 #include <string.h>
+#include <variant>
 
 using namespace regex;
 using namespace regex::jit;
@@ -175,6 +177,38 @@ auto compile_edge_transition(FunctionBuilder &builder,
   builder.attach_label(abandon_transition);
 }
 
+auto compile_check_condition(FunctionBuilder &builder,
+                             Condition const &condition, Label skip_node_label)
+    -> void {
+  // Special cases
+  if (std::holds_alternative<category::Any>(condition.type)) {
+    return; // We always match
+  }
+
+  if (std::holds_alternative<Codepoint>(condition.type)) {
+    // Simple codepoint equality
+    auto const target_codepoint = std::get<Codepoint>(condition.type);
+    builder.insert_load_cmp_imm32(Register::rsp, (uint32_t)0,
+                                  target_codepoint.value);
+    builder.insert_jump_if_not_zero_flag(skip_node_label);
+    return;
+  }
+
+  // Fallback to c++ implementation
+  builder.insert_load32(CallingConvention::argument[0],
+                        /*base=*/Register::rsp,
+                        /*offset=*/(uint32_t)0);
+  std::visit(
+      [&]<typename Condition>(Condition const &condition) {
+        builder.insert_load_imm64(CallingConvention::argument[1],
+                                  (uint64_t)&condition);
+        builder.insert_call(static_cast<bool (*)(Codepoint, Condition const &)>(
+            &evaluation::evaluate_condition));
+      },
+      condition.type);
+  builder.insert_jump_if_equal(CallingConvention::ret, 0, skip_node_label);
+}
+
 auto compile_impl(std::unique_ptr<RegexGraphImpl> graph)
     -> std::unique_ptr<RegexCompiledImpl> {
   Assembler assembler;
@@ -224,19 +258,7 @@ auto compile_impl(std::unique_ptr<RegexGraphImpl> graph)
 
       // 2) Evaluate our condition
       // - Load the codepoint from TOS
-      builder.insert_load32(CallingConvention::argument[0],
-                            /*base=*/Register::rsp,
-                            /*offset=*/(uint32_t)0);
-      std::visit(
-          [&]<typename Condition>(Condition const &condition) {
-            builder.insert_load_imm64(CallingConvention::argument[1],
-                                      (uint64_t)&condition);
-            builder.insert_call(
-                static_cast<bool (*)(Codepoint, Condition const &)>(
-                    &evaluation::evaluate_condition));
-          },
-          node->condition.type);
-      builder.insert_jump_if_equal(CallingConvention::ret, 0, skip_node_label);
+      compile_check_condition(builder, node->condition, skip_node_label);
 
       // 3) The condition passes
       for (auto const &edge : node->edges) {

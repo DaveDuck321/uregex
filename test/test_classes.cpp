@@ -1,4 +1,6 @@
 #include "regex/regex.hpp"
+
+#include "regex_test_common.hpp"
 #include "testing.hpp"
 
 #include <cctype>
@@ -8,13 +10,6 @@
 #include <sys/types.h>
 
 using namespace std::literals;
-
-namespace {
-auto does_match(std::string_view regex, std::string_view string) -> bool {
-  auto graph = regex::parse(regex);
-  return graph.evaluate(string);
-}
-} // namespace
 
 TEST_CASE(basic_digit, "[regex][classes]") {
   CHECK(does_match(R"(\d)", "7"));

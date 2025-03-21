@@ -1,4 +1,4 @@
-#include "regex/regex.hpp"
+#include "regex_test_common.hpp"
 #include "testing.hpp"
 
 #include <cctype>
@@ -6,14 +6,6 @@
 #include <sys/types.h>
 
 using namespace std::literals;
-
-namespace {
-auto match(std::string_view regex, std::string_view string)
-    -> regex::MatchResult {
-  auto graph = regex::parse(regex);
-  return graph.evaluate(string);
-}
-} // namespace
 
 TEST_CASE(single_group, "[regex][groups]") {
   auto result = match(R"((.))", "a");

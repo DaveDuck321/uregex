@@ -43,8 +43,8 @@ public:
     return std::find(m_entries.begin(), m_entries.end(), item) !=
            m_entries.end();
   }
-  constexpr auto size() const -> size_t { return m_entries.size(); }
-  constexpr auto empty() const -> bool { return m_entries.empty(); }
+  constexpr auto size() const -> size_t { return m_entries.size() - 1; }
+  constexpr auto empty() const -> bool { return m_entries.size() == 1; }
 
   constexpr auto begin() const { return m_entries.begin(); }
   constexpr auto end() const { return m_entries.end() - 1; }

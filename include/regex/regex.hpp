@@ -47,10 +47,11 @@ struct MatchResult {
 };
 
 struct RegexGraphImpl;
-class RegexGraph {
+struct RegexCompiled;
+
+struct RegexGraph {
   std::unique_ptr<RegexGraphImpl> impl_;
 
-public:
   RegexGraph(std::unique_ptr<RegexGraphImpl>);
 
   auto visualize(std::ostream &) const -> void;
@@ -61,12 +62,12 @@ public:
   ~RegexGraph();
 };
 
-struct RegexCompliedImpl;
-class RegexCompiled {
-  std::unique_ptr<RegexCompliedImpl> impl_;
+struct RegexCompiledImpl;
+struct RegexCompiled {
+  std::unique_ptr<RegexCompiledImpl> impl_;
 
-public:
-  RegexCompiled(std::unique_ptr<RegexCompliedImpl>);
+  auto visualize(std::ostream &) const -> void;
+  RegexCompiled(std::unique_ptr<RegexCompiledImpl>);
 
   auto evaluate(std::string_view text) const -> MatchResult;
 
@@ -76,5 +77,5 @@ public:
 };
 
 auto parse(std::string_view regex_string) -> RegexGraph;
-auto compile(RegexGraph const &) -> RegexCompiled;
+auto compile(RegexGraph &&) -> RegexCompiled;
 } // namespace regex

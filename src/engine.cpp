@@ -92,7 +92,7 @@ inline auto replace_if_better(evaluation::StateAtIndex &state_to_update,
 
 } // namespace
 
-regex::evaluation::EvaluationState::EvaluationState(RegexGraphImpl const &graph)
+evaluation::EvaluationState::EvaluationState(RegexGraphImpl const &graph)
     : state_1{graph.all_nodes.size(), graph.counters.size(),
               graph.number_of_groups},
       state_2{graph.all_nodes.size(), graph.counters.size(),
@@ -112,7 +112,7 @@ regex::evaluation::EvaluationState::EvaluationState(RegexGraphImpl const &graph)
   }
 }
 
-auto regex::evaluation::EvaluationState::calculate_match_result(
+auto evaluation::EvaluationState::calculate_match_result(
     StateAtIndex *current_state, RegexGraphImpl const &graph,
     std::string_view text) -> MatchResult {
   if (current_state->counters_for(graph.match->index)[0] == text.size()) {

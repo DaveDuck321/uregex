@@ -465,7 +465,7 @@ constexpr auto parse_char_or_char_class(Cursor &cursor)
 
 constexpr auto parse_character_class_expression(Cursor &cursor)
     -> Atom::CustomClassExpression {
-  Atom::CustomClassExpression result  {};
+  Atom::CustomClassExpression result{};
   cursor.eat_or_throw('[');
 
   // Start
@@ -787,11 +787,10 @@ auto build_piece_fragment(Piece const &piece,
   return std::visit(
       meta::Overload{
           [&](Quantifier::NoneOrMore) {
-            size_t counter = all_counters.size();
-            all_counters.push_back(match_type);
-
             auto atom_fragment = build_atom_fragment(piece.atom, all_nodes,
                                                      all_counters, groups);
+            size_t counter = all_counters.size();
+            all_counters.push_back(match_type);
             for (auto &input : atom_fragment.inputs) {
               input.counters.insert(counter);
               for (auto &output : atom_fragment.outputs) {
@@ -807,11 +806,10 @@ auto build_piece_fragment(Piece const &piece,
             return atom_fragment;
           },
           [&](Quantifier::OneOrMore) {
-            size_t counter = all_counters.size();
-            all_counters.push_back(match_type);
-
             auto atom_fragment = build_atom_fragment(piece.atom, all_nodes,
                                                      all_counters, groups);
+            size_t counter = all_counters.size();
+            all_counters.push_back(match_type);
             for (auto &input : atom_fragment.inputs) {
               input.counters.insert(counter);
               for (auto &output : atom_fragment.outputs) {
@@ -835,20 +833,18 @@ auto build_piece_fragment(Piece const &piece,
               fragment = merge_fragments(fragment, next_fragment);
             }
 
-            size_t counter = 0;
-            if (range.lower != range.upper) {
-              counter = all_counters.size();
-              all_counters.push_back(match_type);
-            }
-
+            std::optional<size_t> counter = std::nullopt;
             std::vector<Fragment::Output> final_outputs;
             std::vector<Fragment::Passthrough> final_passthroughs;
             for (size_t i = range.lower; i < range.upper; i += 1) {
               auto next_fragment = build_atom_fragment(piece.atom, all_nodes,
                                                        all_counters, groups);
-
+              if (not counter.has_value()) {
+                counter = all_counters.size();
+                all_counters.push_back(match_type);
+              }
               for (auto &input : next_fragment.inputs) {
-                input.counters.insert(counter);
+                input.counters.insert(*counter);
               }
               for (auto &output : fragment.outputs) {
                 final_outputs.push_back(output);

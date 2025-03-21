@@ -27,18 +27,14 @@ struct StateAtIndex {
   size_t counter_stride;
   size_t group_stride;
 
-  constexpr StateAtIndex() {}
+  StateAtIndex(uint8_t storage[], size_t node_count, size_t counter_count,
+               size_t group_count)
+      : groups{reinterpret_cast<Group *>(&storage[0])},
+        counters{reinterpret_cast<CounterType *>(
+            &storage[group_allocation_size(node_count, group_count)])},
+        counter_stride{counter_count + 1}, group_stride{group_count} {}
 
-  constexpr StateAtIndex(uint8_t storage[], size_t node_count,
-                         size_t counter_count, size_t group_count)
-      : counter_stride{counter_count + 1}, group_stride{group_count} {
-    groups = reinterpret_cast<Group *>(&storage[0]);
-    counters = reinterpret_cast<CounterType *>(
-        &storage[group_allocation_size(node_count, group_count)]);
-  }
-
-  constexpr explicit StateAtIndex(RegexGraphImpl const &graph,
-                                  uint8_t storage[])
+  StateAtIndex(RegexGraphImpl const &graph, uint8_t storage[])
       : StateAtIndex{storage, graph.all_nodes.size(), graph.counters.size(),
                      graph.number_of_groups} {}
 
@@ -53,12 +49,6 @@ struct StateAtIndex {
     return sizeof(Group) * group_count * node_count;
   }
 
-  static constexpr auto required_allocation_size(RegexGraphImpl const &graph)
-      -> size_t {
-    return required_allocation_size(
-        graph.all_nodes.size(), graph.counters.size(), graph.number_of_groups);
-  }
-
   static constexpr auto required_allocation_size(size_t node_count,
                                                  size_t counter_count,
                                                  size_t group_count) -> size_t {
@@ -67,25 +57,10 @@ struct StateAtIndex {
     return (unaligned_size + sizeof(size_t) - 1) & ~(sizeof(size_t) - 1);
   }
 
-  static constexpr auto allocate_storage_for(size_t node_count,
-                                             size_t counter_count,
-                                             size_t group_count)
-      -> std::unique_ptr<uint8_t[]> {
-    auto storage = std::make_unique<uint8_t[]>(
-        required_allocation_size(node_count, counter_count, group_count));
-
-    auto state =
-        StateAtIndex{storage.get(), node_count, counter_count, group_count};
-
-    ::memset(state.groups, -1, group_allocation_size(node_count, group_count));
-    ::memset(state.counters, 0,
-             counter_allocation_size(node_count, counter_count));
-
-    // The first counter of each state is used as the "last added index"
-    for (size_t node_id = 0; node_id < node_count; node_id += 1) {
-      state.counters_for(node_id)[0] = max_index;
-    }
-    return storage;
+  static constexpr auto required_allocation_size(RegexGraphImpl const &graph)
+      -> size_t {
+    return required_allocation_size(
+        graph.all_nodes.size(), graph.counters.size(), graph.number_of_groups);
   }
 
   constexpr auto counters_for(size_t state_id) const -> CounterType * {
@@ -206,11 +181,13 @@ struct EvaluationState {
   StateAtIndex m_state_1;
   StateAtIndex m_state_2;
 
-  explicit EvaluationState(RegexGraphImpl const &graph);
+  explicit EvaluationState(RegexGraphImpl const &);
   EvaluationState(EvaluationState const &) = delete;
   auto operator=(EvaluationState const &) -> EvaluationState & = delete;
   ~EvaluationState() { ::free(m_storage); }
 
+  static auto preallocate_initial_state(RegexGraphImpl const &)
+      -> std::unique_ptr<uint8_t[]>;
   auto calculate_match_result(StateAtIndex *current_state,
                               RegexGraphImpl const &, std::string_view text)
       -> MatchResult;

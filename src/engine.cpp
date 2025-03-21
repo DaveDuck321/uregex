@@ -99,17 +99,41 @@ EvaluationState::EvaluationState(RegexGraphImpl const &graph)
       m_state_1{graph, m_storage},
       m_state_2{graph,
                 m_storage + StateAtIndex::required_allocation_size(graph)} {
-
   ::memcpy(m_storage, graph.initial_state.get(),
-           StateAtIndex::required_allocation_size(graph));
-  ::memcpy(m_storage + StateAtIndex::required_allocation_size(graph),
-           graph.initial_state.get(),
-           StateAtIndex::required_allocation_size(graph));
+           2 * StateAtIndex::required_allocation_size(graph));
+}
+
+auto EvaluationState::preallocate_initial_state(const RegexGraphImpl &graph)
+    -> std::unique_ptr<uint8_t[]> {
+  size_t const node_count = graph.all_nodes.size();
+  size_t const counters = graph.counters.size();
+  size_t const number_of_groups = graph.number_of_groups;
+
+  size_t const allocation_size = StateAtIndex::required_allocation_size(graph);
+
+  auto storage = std::make_unique<uint8_t[]>(2 * allocation_size);
+
+  auto state_1 = StateAtIndex{graph, storage.get()};
+  auto state_2 = StateAtIndex{graph, storage.get() + allocation_size};
+  ::memset(state_1.groups, -1,
+           StateAtIndex::group_allocation_size(node_count, number_of_groups));
+  ::memset(state_1.counters, 0,
+           StateAtIndex::counter_allocation_size(node_count, counters));
+  ::memset(state_2.groups, -1,
+           StateAtIndex::group_allocation_size(node_count, number_of_groups));
+  ::memset(state_2.counters, 0,
+           StateAtIndex::counter_allocation_size(node_count, counters));
+
+  // The first counter of each state is used as the "last added index"
+  for (size_t node_id = 0; node_id < node_count; node_id += 1) {
+    state_1.counters_for(node_id)[0] = max_index;
+  }
 
   for (auto const &edge : graph.entry->edges) {
-    replace_if_better(m_state_1, m_state_2, graph.entry->index, graph, edge, 0);
-    m_state_1.counters_for(edge.output_index)[0] = 0;
+    replace_if_better(state_1, state_2, graph.entry->index, graph, edge, 0);
+    state_1.counters_for(edge.output_index)[0] = 0;
   }
+  return storage;
 }
 
 auto EvaluationState::calculate_match_result(StateAtIndex *current_state,

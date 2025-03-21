@@ -214,6 +214,20 @@ class FunctionBuilder {
     }
   }
 
+  template <typename RegOrDigit>
+  constexpr auto insert_base_offset_immediate(RegOrDigit reg, Register base,
+                                              uint32_t offset) -> void {
+    if (offset == 0 && (std::to_underlying(base) & 0b111) != 0b101) {
+      insert_modrm(reg, /*mod=*/0b00, /*rm=*/base);
+    } else if (offset <= 127) {
+      insert_modrm(reg, /*mod=*/0b01, /*rm=*/base);
+      program->insert_immediate((uint8_t)offset);
+    } else {
+      insert_modrm(reg, /*mod=*/0b10, /*rm=*/base);
+      program->insert_immediate(offset);
+    }
+  }
+
   constexpr auto insert_reference_to_label(Label label, Fixup::Type type)
       -> void {
     assembler->label_to_fixups[label].push_back(
@@ -281,16 +295,14 @@ public:
       -> void {
     maybe_insert_rex(base, dst);
     program->insert_byte(0x8bU);
-    insert_modrm(/*reg=*/dst, /*mod=*/0b10, /*rm=*/base);
-    program->insert_immediate(offset);
+    insert_base_offset_immediate(dst, base, offset);
   }
 
   constexpr auto insert_load64(Register dst, Register base, uint32_t offset)
       -> void {
     insert_rex(true, base, dst);
     program->insert_byte(0x8bU);
-    insert_modrm(/*reg=*/dst, /*mod=*/0b10, /*rm=*/base);
-    program->insert_immediate(offset);
+    insert_base_offset_immediate(dst, base, offset);
   }
 
   constexpr auto insert_store_imm32(Register dst_base, uint32_t dst_offset,
@@ -298,8 +310,7 @@ public:
     maybe_insert_rex(dst_base);
 
     program->insert_byte(0xc7U);
-    insert_modrm(0, /*mod=*/0b10, /*rm=*/dst_base);
-    program->insert_immediate(dst_offset);
+    insert_base_offset_immediate(0, dst_base, dst_offset);
     program->insert_immediate(value);
   }
 
@@ -307,8 +318,14 @@ public:
                                 Register src) -> void {
     maybe_insert_rex(dst_base, src);
     program->insert_byte(0x89U);
-    insert_modrm(src, /*mod=*/0b10, /*rm=*/dst_base);
-    program->insert_immediate(dst_offset);
+    insert_base_offset_immediate(src, dst_base, dst_offset);
+  }
+
+  constexpr auto insert_store64(Register dst_base, uint32_t dst_offset,
+                                Register src) -> void {
+    insert_rex(true, dst_base, src);
+    program->insert_byte(0x89U);
+    insert_base_offset_immediate(src, dst_base, dst_offset);
   }
 
   template <typename Ret, typename... Args>
@@ -330,21 +347,28 @@ public:
     program->insert_immediate(compare_to);
   }
 
-  constexpr auto insert_load_cmp_imm32(Register base, uint32_t offset,
+  constexpr auto insert_load32_cmp_imm(Register base, uint32_t offset,
                                        uint32_t compare_to) -> void {
     maybe_insert_rex(base);
-    program->insert_byte(0x81);
-    insert_modrm(7, /*mod=*/0b10, base);
-    program->insert_immediate(offset);
-    program->insert_immediate(compare_to);
+
+    if (compare_to <= 127) {
+      // Special case for short ASCII compares
+      program->insert_byte(0x83);
+      insert_base_offset_immediate(7, base, offset);
+      program->insert_immediate((uint8_t)compare_to);
+    } else {
+      // Full imm32 compare
+      program->insert_byte(0x81);
+      insert_base_offset_immediate(7, base, offset);
+      program->insert_immediate(compare_to);
+    }
   }
 
   constexpr auto insert_load_cmp32(Register base, uint32_t offset,
                                    Register compare_to) -> void {
     maybe_insert_rex(base, compare_to);
     program->insert_byte(0x39);
-    insert_modrm(compare_to, /*mod=*/0b10, base);
-    program->insert_immediate(offset);
+    insert_base_offset_immediate(compare_to, base, offset);
   }
 
   constexpr auto insert_jump_if_zero_flag(Label target_if_zero) -> void {

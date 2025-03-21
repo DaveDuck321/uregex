@@ -158,6 +158,18 @@ auto compile_edge_transition(FunctionBuilder &builder,
         sizeof(Group) *
         (graph.number_of_groups * edge.output_index + group_index);
 
+    if (not edge.start_groups.contains(group_index) &&
+        not edge.end_groups.contains(group_index)) {
+      // Common case where we're not touching this group, copy over the entire
+      // struct atomically.
+      builder.insert_load64(tmp_group, current_state_group_base,
+                            current_state_group_offset);
+      builder.insert_store64(/*dst_base=*/new_state_group_base,
+                             /*dst_offset=*/next_state_group_offset,
+                             /*src=*/tmp_group);
+      continue;
+    }
+
     if (edge.start_groups.contains(group_index)) {
       builder.insert_store32(/*dst_base=*/new_state_group_base,
                              /*dst_offset=*/next_state_group_offset,
@@ -200,7 +212,7 @@ auto compile_check_condition(FunctionBuilder &builder,
   if (std::holds_alternative<Codepoint>(condition.type)) {
     // Simple codepoint equality
     auto const target_codepoint = std::get<Codepoint>(condition.type);
-    builder.insert_load_cmp_imm32(Register::rsp, (uint32_t)0,
+    builder.insert_load32_cmp_imm(Register::rsp, (uint32_t)0,
                                   target_codepoint.value);
     builder.insert_jump_if_not_zero_flag(skip_node_label);
     return;

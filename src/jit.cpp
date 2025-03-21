@@ -50,6 +50,15 @@ auto compile_edge_transition(FunctionBuilder &builder,
                             /*compare_to=*/current_index);
   builder.insert_jump_if_not_zero_flag(commit_new_state);
 
+  // We can skip over the first N-counters if we've already incidentally proved
+  // that they're unchanged. Allocate the labels ahead of time.
+  std::vector<Label> commit_from_counter_labels;
+  commit_from_counter_labels.reserve(graph.counters.size());
+  for (size_t counter_index = 0; counter_index < graph.counters.size();
+       counter_index += 1) {
+    commit_from_counter_labels.push_back(builder.allocate_label());
+  }
+
   // Now we need to consider the remaining counters one at a time
   for (auto const &[counter_index, counter_type] :
        std::views::enumerate(graph.counters)) {
@@ -81,12 +90,14 @@ auto compile_edge_transition(FunctionBuilder &builder,
       // Abandon when CF=0 & ZF=0
       // Accept when CF=1
       builder.insert_jump_if_not_carry_nor_zero_flag(abandon_transition);
-      builder.insert_jump_if_carry_flag(commit_new_state);
+      builder.insert_jump_if_carry_flag(
+          commit_from_counter_labels[counter_index]);
     } else {
       // Abandon when CF=1
       // Accept when CF=0 & ZF=0
       builder.insert_jump_if_carry_flag(abandon_transition);
-      builder.insert_jump_if_not_carry_nor_zero_flag(commit_new_state);
+      builder.insert_jump_if_not_carry_nor_zero_flag(
+          commit_from_counter_labels[counter_index]);
     }
   }
   // We've failed to accept this transition, we might as well abandon it
@@ -103,6 +114,7 @@ auto compile_edge_transition(FunctionBuilder &builder,
   // - Commit each counter
   for (auto const &[counter_index, counter_type] :
        std::views::enumerate(graph.counters)) {
+    builder.attach_label(commit_from_counter_labels[counter_index]);
     bool is_incremented = edge.counters.contains(counter_index);
 
     size_t const current_state_counter_offset =

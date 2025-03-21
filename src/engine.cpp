@@ -7,6 +7,8 @@
 #include <algorithm>
 #include <cassert>
 #include <cstddef>
+#include <cstdint>
+#include <cstdlib>
 #include <memory>
 #include <optional>
 #include <string.h>
@@ -14,14 +16,13 @@
 
 using namespace regex;
 using namespace std::ranges;
+using namespace regex::evaluation;
 
 namespace {
-inline auto replace_if_better(evaluation::StateAtIndex &state_to_update,
-                              evaluation::StateAtIndex const &current_state,
+inline auto replace_if_better(StateAtIndex &state_to_update,
+                              StateAtIndex const &current_state,
                               size_t evaluating_id, RegexGraphImpl const &graph,
                               Edge const &edge, size_t next_offset) -> void {
-  using namespace regex::evaluation;
-
   size_t const node_index = edge.output_index;
   CounterType *out_counters = state_to_update.counters_for(node_index);
   auto *out_groups = state_to_update.groups_for(node_index);
@@ -92,29 +93,29 @@ inline auto replace_if_better(evaluation::StateAtIndex &state_to_update,
 
 } // namespace
 
-evaluation::EvaluationState::EvaluationState(RegexGraphImpl const &graph)
-    : state_1{graph.all_nodes.size(), graph.counters.size(),
-              graph.number_of_groups},
-      state_2{graph.all_nodes.size(), graph.counters.size(),
-              graph.number_of_groups} {
-  // The first counter of each state is used as the "last added index"
-  for (size_t node_id = 0; node_id < graph.all_nodes.size(); node_id += 1) {
-    state_1.counters_for(node_id)[0] = max_index;
-  }
-  ::memset(state_1.groups.get(), -1,
-           graph.all_nodes.size() * graph.number_of_groups * sizeof(Group));
-  ::memset(state_2.groups.get(), -1,
-           graph.all_nodes.size() * graph.number_of_groups * sizeof(Group));
+EvaluationState::EvaluationState(RegexGraphImpl const &graph)
+    : m_storage{(uint8_t *)::malloc(
+          2 * StateAtIndex::required_allocation_size(graph))},
+      m_state_1{graph, m_storage},
+      m_state_2{graph,
+                m_storage + StateAtIndex::required_allocation_size(graph)} {
+
+  ::memcpy(m_storage, graph.initial_state.get(),
+           StateAtIndex::required_allocation_size(graph));
+  ::memcpy(m_storage + StateAtIndex::required_allocation_size(graph),
+           graph.initial_state.get(),
+           StateAtIndex::required_allocation_size(graph));
 
   for (auto const &edge : graph.entry->edges) {
-    replace_if_better(state_1, state_2, graph.entry->index, graph, edge, 0);
-    state_1.counters_for(edge.output_index)[0] = 0;
+    replace_if_better(m_state_1, m_state_2, graph.entry->index, graph, edge, 0);
+    m_state_1.counters_for(edge.output_index)[0] = 0;
   }
 }
 
-auto evaluation::EvaluationState::calculate_match_result(
-    StateAtIndex *current_state, RegexGraphImpl const &graph,
-    std::string_view text) -> MatchResult {
+auto EvaluationState::calculate_match_result(StateAtIndex *current_state,
+                                             RegexGraphImpl const &graph,
+                                             std::string_view text)
+    -> MatchResult {
   if (current_state->counters_for(graph.match->index)[0] == text.size()) {
     // The last character was a match!
     auto result = MatchResult{text, {}, true};
@@ -145,10 +146,10 @@ auto evaluation::EvaluationState::calculate_match_result(
 auto RegexGraph::evaluate(std::string_view text) const -> MatchResult {
   auto const &graph = *impl_;
 
-  auto evaluation_state = evaluation::EvaluationState{graph};
+  auto evaluation_state = EvaluationState{graph};
 
-  auto *current_state = &evaluation_state.state_1;
-  auto *next_state = &evaluation_state.state_2;
+  auto *current_state = &evaluation_state.m_state_1;
+  auto *next_state = &evaluation_state.m_state_2;
 
   // Evaluate!
   size_t current_index = 0;
@@ -166,7 +167,7 @@ auto RegexGraph::evaluate(std::string_view text) const -> MatchResult {
 
       auto result = std::visit(
           [&](auto condition) {
-            return evaluation::evaluate_condition(codepoint, condition);
+            return evaluate_condition(codepoint, condition);
           },
           evaluating_node.condition.type);
 

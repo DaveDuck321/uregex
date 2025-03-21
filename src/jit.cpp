@@ -146,9 +146,9 @@ auto compile_edge_transition(FunctionBuilder &builder,
   static constexpr auto tmp_group = CallingConvention::temporary[2];
 
   builder.insert_load64(current_state_group_base, current_state_reg,
-                        offsetof(jit::State, groups));
+                        offsetof(StateAtIndex, groups));
   builder.insert_load64(new_state_group_base, next_state_reg,
-                        offsetof(jit::State, groups));
+                        offsetof(StateAtIndex, groups));
 
   for (size_t group_index = 0; group_index < graph.number_of_groups;
        group_index += 1) {
@@ -260,9 +260,9 @@ auto compile_impl(std::unique_ptr<RegexGraphImpl> graph)
     builder.insert_mov64(next_state_reg, CallingConvention::argument[4]);
 
     builder.insert_load64(current_state_counter_base, current_state_reg,
-                          offsetof(jit::State, counters));
+                          offsetof(StateAtIndex, counters));
     builder.insert_load64(next_state_counter_base, next_state_reg,
-                          offsetof(jit::State, counters));
+                          offsetof(StateAtIndex, counters));
 
     for (auto const &[state_index, node] :
          std::views::enumerate(graph->all_nodes)) {
@@ -300,7 +300,8 @@ auto compile_impl(std::unique_ptr<RegexGraphImpl> graph)
   auto section = ExecutableSection{assembler.program.data};
   auto entry_point_ptr =
       section.get_fn_ptr<void, Codepoint, evaluation::IndexType,
-                         evaluation::IndexType, jit::State *, jit::State *>(
+                         evaluation::IndexType, evaluation::StateAtIndex *,
+                         evaluation::StateAtIndex *>(
           assembler.label_to_location[entry_point]);
   return std::make_unique<RegexCompiledImpl>(
       std::move(graph), std::move(section), entry_point_ptr);
@@ -315,14 +316,8 @@ auto RegexCompiledImpl::evaluate(std::string_view text) const
     -> regex::MatchResult {
   auto all_state = evaluation::EvaluationState{*m_graph};
 
-  // Copy our state into a simpler c-style data structure
-  jit::State state_1{all_state.state_1.counters.get(),
-                     all_state.state_1.groups.get()};
-  jit::State state_2{all_state.state_2.counters.get(),
-                     all_state.state_2.groups.get()};
-
-  auto *current_state = &state_1;
-  auto *next_state = &state_2;
+  auto *current_state = &all_state.m_state_1;
+  auto *next_state = &all_state.m_state_2;
 
   size_t current_index = 0;
   while (current_index < text.size()) {
@@ -337,9 +332,5 @@ auto RegexCompiledImpl::evaluate(std::string_view text) const
     std::swap(current_state, next_state);
   }
 
-  auto *current_cpp_state =
-      (all_state.state_1.counters.get() == current_state->counters
-           ? &all_state.state_1
-           : &all_state.state_2);
-  return all_state.calculate_match_result(current_cpp_state, *m_graph, text);
+  return all_state.calculate_match_result(current_state, *m_graph, text);
 }

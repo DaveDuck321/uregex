@@ -66,6 +66,7 @@ enum class Counter {
 struct RegexGraphImpl {
   std::vector<std::unique_ptr<Node>> all_nodes;
   std::vector<Counter> counters;
+  std::unique_ptr<uint8_t[]> initial_state;
   Node const *entry;
   Node const *match;
   size_t number_of_groups;

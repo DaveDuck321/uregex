@@ -9,11 +9,6 @@
 
 namespace regex {
 namespace jit {
-struct State {
-  evaluation::CounterType *counters;
-  evaluation::Group *groups;
-};
-
 class ExecutableSection {
   void *m_executable;
   size_t m_size;
@@ -52,8 +47,9 @@ public:
 
 struct RegexCompiledImpl {
   using EntryPointFn = void (*)(Codepoint, evaluation::IndexType,
-                                evaluation::IndexType, jit::State *,
-                                jit::State *);
+                                evaluation::IndexType,
+                                evaluation::StateAtIndex *,
+                                evaluation::StateAtIndex *);
   std::unique_ptr<RegexGraphImpl> m_graph;
   jit::ExecutableSection m_executable;
   EntryPointFn m_entrypoint;

@@ -35,7 +35,7 @@ Pull in the header:
 using namespace std::literals;
 
 namespace {
-auto summarize_result(regex::MatchResult result) -> void {
+auto summarize_result(uregex::MatchResult result) -> void {
   if (result) {
     std::println(std::cerr, "Match!");
     for (auto [index, group] : std::ranges::views::enumerate(result.groups)) {
@@ -59,14 +59,14 @@ int main(int argc, char *argv[]) {
   std::string_view match_string = argv[2];
 
   // Parse
-  auto graph = regex::parse(regex_string);
+  auto graph = uregex::parse(regex_string);
   graph.visualize(std::cout);
 
   // Cpp implementation
   summarize_result(graph.evaluate(match_string));
 
   // JIT
-  auto compiled_graph = regex::compile(std::move(graph));
+  auto compiled_graph = uregex::compile(std::move(graph));
   summarize_result(compiled_graph.evaluate(match_string));
 }
 

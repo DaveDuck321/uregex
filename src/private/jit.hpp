@@ -7,7 +7,7 @@
 #include <memory>
 #include <sys/mman.h>
 
-namespace regex {
+namespace uregex {
 namespace jit {
 class ExecutableSection {
   void *m_executable;
@@ -61,4 +61,4 @@ struct RegexCompiledImpl {
 
   auto evaluate(std::string_view text) const -> MatchResult;
 };
-} // namespace regex
+} // namespace uregex

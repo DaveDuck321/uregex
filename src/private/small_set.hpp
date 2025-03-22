@@ -5,7 +5,7 @@
 #include <limits>
 #include <vector>
 
-namespace regex {
+namespace uregex {
 template <typename T> class SmallSet {
   // Placeholder implementation
   std::vector<T> m_entries;
@@ -52,4 +52,4 @@ public:
     return m_entries[m_entries.size() - 2];
   };
 };
-} // namespace regex
+} // namespace uregex

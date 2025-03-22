@@ -3,12 +3,11 @@
 #include <cassert>
 #include <format>
 #include <memory>
-#include <ostream>
 #include <stdexcept>
 #include <string_view>
 #include <vector>
 
-namespace regex {
+namespace uregex {
 class RegexError : public std::runtime_error {
 public:
   template <typename... T>
@@ -47,8 +46,6 @@ struct MatchResult {
 };
 
 struct RegexGraphImpl;
-struct RegexCompiled;
-
 struct RegexGraph {
   std::unique_ptr<RegexGraphImpl> impl_;
 
@@ -78,4 +75,4 @@ struct RegexCompiled {
 
 auto parse(std::string_view regex_string) -> RegexGraph;
 auto compile(RegexGraph &&) -> RegexCompiled;
-} // namespace regex
+} // namespace uregex

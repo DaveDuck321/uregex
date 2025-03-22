@@ -14,9 +14,9 @@
 #include <string.h>
 #include <vector>
 
-using namespace regex;
+using namespace uregex;
 using namespace std::ranges;
-using namespace regex::evaluation;
+using namespace uregex::evaluation;
 
 namespace {
 inline auto replace_if_better(StateAtIndex &state_to_update,

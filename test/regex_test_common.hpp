@@ -7,11 +7,11 @@
 #include <string_view>
 
 inline auto match(std::string_view regex, std::string_view string)
-    -> regex::MatchResult {
-  auto graph = regex::parse(regex);
+    -> uregex::MatchResult {
+  auto graph = uregex::parse(regex);
   auto const cpp_evaluate_result = graph.evaluate(string);
 
-  auto compiled = regex::compile(std::move(graph));
+  auto compiled = uregex::compile(std::move(graph));
   auto const jit_evaluate_result = compiled.evaluate(string);
   CHECK((bool)cpp_evaluate_result == (bool)jit_evaluate_result);
   CHECK(cpp_evaluate_result.groups.size() == jit_evaluate_result.groups.size());

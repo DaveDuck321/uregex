@@ -5,7 +5,7 @@
 
 #include <string_view>
 
-using namespace regex;
+using namespace uregex;
 
 RegexGraph::RegexGraph(std::unique_ptr<RegexGraphImpl> impl)
     : impl_{std::move(impl)} {}

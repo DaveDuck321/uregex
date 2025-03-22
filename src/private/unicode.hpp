@@ -8,7 +8,7 @@
 #include <string_view>
 #include <unistd.h>
 
-namespace regex {
+namespace uregex {
 struct Codepoint;
 
 constexpr auto parse_utf8_char(std::string_view text, size_t &offset)
@@ -96,4 +96,4 @@ constexpr auto codepoint_to_utf8(std::string &output, Codepoint codepoint)
 }
 
 auto get_category(Codepoint codepoint) -> std::array<char, 2>;
-} // namespace regex
+} // namespace uregex

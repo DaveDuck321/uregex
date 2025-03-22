@@ -11,7 +11,7 @@
 #include <string_view>
 #include <type_traits>
 
-using namespace regex;
+using namespace uregex;
 
 namespace {
 constexpr auto to_uppercase(std::string &input) -> void {

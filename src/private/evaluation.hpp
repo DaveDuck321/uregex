@@ -11,7 +11,7 @@
 #include <string_view>
 #include <variant>
 
-namespace regex::evaluation {
+namespace uregex::evaluation {
 using CounterType = unsigned;
 using IndexType = unsigned;
 static constexpr auto max_index = std::numeric_limits<IndexType>::max();
@@ -192,4 +192,4 @@ struct EvaluationState {
                               RegexGraphImpl const &, std::string_view text)
       -> MatchResult;
 };
-} // namespace regex::evaluation
+} // namespace uregex::evaluation

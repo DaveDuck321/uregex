@@ -76,8 +76,8 @@ TEST_CASE(unicode_categories, "[regex][classes][unicode]") {
     auto regex = std::format("\\p{{{}}}", test_category);
     auto complement_regex = std::format("\\P{{{}}}", test_category);
 
-    auto graph = regex::parse(regex);
-    auto complement = regex::parse(complement_regex);
+    auto graph = uregex::parse(regex);
+    auto complement = uregex::parse(complement_regex);
 
     for (auto const &[_, other_codepoint] : examples_from_category) {
       std::string test_string = other_codepoint;

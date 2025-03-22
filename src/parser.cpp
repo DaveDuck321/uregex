@@ -12,8 +12,8 @@
 #include <variant>
 #include <vector>
 
-using namespace regex::category;
-using namespace regex;
+using namespace uregex::category;
+using namespace uregex;
 using namespace std::string_view_literals;
 
 namespace {
@@ -902,7 +902,7 @@ auto build_fragment(Regex const &regex,
 }
 } // namespace
 
-auto regex::parse(std::string_view regex_string) -> RegexGraph {
+auto uregex::parse(std::string_view regex_string) -> RegexGraph {
   // Parse into AST
   Cursor cursor{.text = regex_string, .offset = 0};
   auto regex = parse_regex(cursor);

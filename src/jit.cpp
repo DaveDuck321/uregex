@@ -16,9 +16,9 @@
 #include <string.h>
 #include <variant>
 
-using namespace regex;
-using namespace regex::jit;
-using namespace regex::evaluation;
+using namespace uregex;
+using namespace uregex::jit;
+using namespace uregex::evaluation;
 using namespace std::ranges;
 
 namespace {
@@ -308,12 +308,12 @@ auto compile_impl(std::unique_ptr<RegexGraphImpl> graph)
 }
 } // namespace
 
-auto regex::compile(RegexGraph &&graph) -> RegexCompiled {
+auto uregex::compile(RegexGraph &&graph) -> RegexCompiled {
   return compile_impl(std::move(graph.impl_));
 }
 
 auto RegexCompiledImpl::evaluate(std::string_view text) const
-    -> regex::MatchResult {
+    -> uregex::MatchResult {
   auto all_state = evaluation::EvaluationState{*m_graph};
 
   auto *current_state = &all_state.m_state_1;

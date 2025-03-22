@@ -6,7 +6,7 @@
 #include <cstdint>
 #include <string_view>
 
-namespace regex::category {
+namespace uregex::category {
 struct Any {
   static constexpr std::string_view type = ".";
 };
@@ -186,4 +186,4 @@ struct Range {
     assert(lower.value <= upper.value);
   }
 };
-} // namespace regex::category
+} // namespace uregex::category

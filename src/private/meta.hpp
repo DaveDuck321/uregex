@@ -1,6 +1,6 @@
 #pragma once
 
-namespace regex::meta {
+namespace uregex::meta {
 template <typename... Ts> struct Overload : Ts... {
   using Ts::operator()...;
 };
@@ -41,4 +41,4 @@ using concat = impl::Concat<ListType1, ListType2>::type;
 
 template <template <typename> typename TemplateFn, typename ListType>
 using apply = impl::Apply<TemplateFn, ListType>::type;
-} // namespace regex::meta
+} // namespace uregex::meta

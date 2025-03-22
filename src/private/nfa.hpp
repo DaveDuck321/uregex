@@ -8,7 +8,7 @@
 #include <memory>
 #include <vector>
 
-namespace regex {
+namespace uregex {
 // A regex graph is built of states and conditions, if the condition is met we
 // advance to the next state, if the condition is violated, we fail to match
 // this part of the graph.
@@ -71,4 +71,4 @@ struct RegexGraphImpl {
   Node const *match;
   size_t number_of_groups;
 };
-} // namespace regex
+} // namespace uregex

@@ -13,7 +13,7 @@
 #include <utility>
 #include <vector>
 
-namespace regex::jit {
+namespace uregex::jit {
 using IndexInProgram = int64_t;
 
 enum class Register : uint8_t {
@@ -433,4 +433,4 @@ constexpr auto Assembler::build_function(Label fn_label, Builder &&fn_builder)
   fn_builder(builder);
 }
 
-} // namespace regex::jit
+} // namespace uregex::jit

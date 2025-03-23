@@ -273,6 +273,12 @@ public:
     program->insert_immediate(imm);
   }
 
+  constexpr auto insert_xor(Register dst, Register src) -> void {
+    maybe_insert_rex(dst, src);
+    program->insert_byte(0x31);
+    insert_modrm(/*reg=*/src, 0b11, /*rm=*/dst);
+  }
+
   constexpr auto insert_load_imm64(Register reg, uint64_t imm) -> void {
     insert_rex(/*is_operand=*/true, reg);
     program->insert_byte(0xb8U + (std::to_underlying(reg) & 0b111));

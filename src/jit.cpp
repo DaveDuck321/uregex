@@ -23,14 +23,14 @@ using namespace std::ranges;
 
 namespace {
 
-constexpr auto current_state_reg = CallingConvention::callee_saved[0];
-constexpr auto next_state_reg = CallingConvention::callee_saved[1];
+constexpr auto current_state_base_reg = CallingConvention::callee_saved[0];
+constexpr auto next_state_base_reg = CallingConvention::callee_saved[1];
 
 constexpr auto last_index = CallingConvention::callee_saved[2];
 constexpr auto current_index = CallingConvention::callee_saved[3];
 
-constexpr auto current_state_counter_base = CallingConvention::callee_saved[4];
-constexpr auto next_state_counter_base = CallingConvention::callee_saved[5];
+constexpr auto did_accept_any_state = CallingConvention::callee_saved[4];
+constexpr auto codepoint = CallingConvention::callee_saved[5];
 
 auto compile_edge_transition(FunctionBuilder &builder,
                              RegexGraphImpl const &graph, Edge const &edge,
@@ -44,10 +44,11 @@ auto compile_edge_transition(FunctionBuilder &builder,
 
   // - The first counter is set to the current index if we've already
   // added the state at this iteration.
-  builder.insert_load_cmp32(next_state_counter_base,
-                            /*offset=*/sizeof(CounterType) *
-                                (graph.counters.size() + 1) * edge.output_index,
-                            /*compare_to=*/current_index);
+  builder.insert_load_cmp32(
+      next_state_base_reg,
+      /*offset=*/StateAtIndex::counter_offset(graph) +
+          sizeof(CounterType) * (graph.counters.size() + 1) * edge.output_index,
+      /*compare_to=*/current_index);
   builder.insert_jump_if_not_zero_flag(commit_new_state);
 
   // We can skip over the first N-counters if we've already incidentally proved
@@ -65,15 +66,18 @@ auto compile_edge_transition(FunctionBuilder &builder,
     bool is_incremented = edge.counters.contains(counter_index);
 
     size_t const current_state_counter_offset =
+        StateAtIndex::counter_offset(graph) +
         sizeof(CounterType) *
-        ((graph.counters.size() + 1) * current_state + counter_index + 1);
+            ((graph.counters.size() + 1) * current_state + counter_index + 1);
 
     size_t const next_state_counter_offset =
-        sizeof(CounterType) *
-        ((graph.counters.size() + 1) * edge.output_index + counter_index + 1);
+        StateAtIndex::counter_offset(graph) +
+        sizeof(CounterType) * ((graph.counters.size() + 1) * edge.output_index +
+                               counter_index + 1);
 
     // TODO: maybe just issue an add with a memory operand?
-    builder.insert_load32(computed_counter_value, current_state_counter_base,
+    builder.insert_load32(computed_counter_value, current_state_base_reg,
+
                           current_state_counter_offset);
 
     if (is_incremented) {
@@ -81,8 +85,7 @@ auto compile_edge_transition(FunctionBuilder &builder,
     }
 
     // test_result = next_state_counter[counter] - computed_counter
-    builder.insert_load_cmp32(next_state_counter_base,
-                              /*offset=*/next_state_counter_offset,
+    builder.insert_load_cmp32(next_state_base_reg, next_state_counter_offset,
                               /*compare_to=*/computed_counter_value);
 
     // Fallthrough when equal
@@ -106,9 +109,10 @@ auto compile_edge_transition(FunctionBuilder &builder,
 
   // 1) Commit new counters
   // - Commit the current index
-  builder.insert_store32(next_state_counter_base,
-                         /*offset=*/sizeof(CounterType) *
-                             (graph.counters.size() + 1) * edge.output_index,
+  builder.insert_store32(next_state_base_reg,
+                         /*offset=*/StateAtIndex::counter_offset(graph) +
+                             sizeof(CounterType) * (graph.counters.size() + 1) *
+                                 edge.output_index,
                          /*src=*/current_index);
 
   // - Commit each counter
@@ -118,15 +122,17 @@ auto compile_edge_transition(FunctionBuilder &builder,
     bool is_incremented = edge.counters.contains(counter_index);
 
     size_t const current_state_counter_offset =
+        StateAtIndex::counter_offset(graph) +
         sizeof(CounterType) *
-        ((graph.counters.size() + 1) * current_state + counter_index + 1);
+            ((graph.counters.size() + 1) * current_state + counter_index + 1);
 
     size_t const next_state_counter_offset =
-        sizeof(CounterType) *
-        ((graph.counters.size() + 1) * edge.output_index + counter_index + 1);
+        StateAtIndex::counter_offset(graph) +
+        sizeof(CounterType) * ((graph.counters.size() + 1) * edge.output_index +
+                               counter_index + 1);
 
     // TODO: maybe just issue an add with a memory operand?
-    builder.insert_load32(computed_counter_value, current_state_counter_base,
+    builder.insert_load32(computed_counter_value, current_state_base_reg,
                           current_state_counter_offset);
 
     if (is_incremented) {
@@ -134,64 +140,58 @@ auto compile_edge_transition(FunctionBuilder &builder,
     }
 
     // test_result = next_state_counter[counter] - computed_counter
-    builder.insert_store32(/*dst_base=*/next_state_counter_base,
+    builder.insert_store32(/*dst_base=*/next_state_base_reg,
                            /*dst_offset=*/next_state_counter_offset,
                            /*src=*/computed_counter_value);
   }
 
   // 2) Commit new groups
-  static constexpr auto current_state_group_base =
-      CallingConvention::temporary[0];
-  static constexpr auto new_state_group_base = CallingConvention::temporary[1];
-  static constexpr auto tmp_group = CallingConvention::temporary[2];
-
-  builder.insert_load64(current_state_group_base, current_state_reg,
-                        offsetof(StateAtIndex, groups));
-  builder.insert_load64(new_state_group_base, next_state_reg,
-                        offsetof(StateAtIndex, groups));
+  static constexpr auto tmp_group = CallingConvention::temporary[0];
 
   for (size_t group_index = 0; group_index < graph.number_of_groups;
        group_index += 1) {
     size_t const current_state_group_offset =
+        StateAtIndex::group_offset(graph) +
         sizeof(Group) * (graph.number_of_groups * current_state + group_index);
     size_t const next_state_group_offset =
+        StateAtIndex::group_offset(graph) +
         sizeof(Group) *
-        (graph.number_of_groups * edge.output_index + group_index);
+            (graph.number_of_groups * edge.output_index + group_index);
 
     if (not edge.start_groups.contains(group_index) &&
         not edge.end_groups.contains(group_index)) {
       // Common case where we're not touching this group, copy over the entire
       // struct atomically.
-      builder.insert_load64(tmp_group, current_state_group_base,
+      builder.insert_load64(tmp_group, current_state_base_reg,
                             current_state_group_offset);
-      builder.insert_store64(/*dst_base=*/new_state_group_base,
+      builder.insert_store64(/*dst_base=*/next_state_base_reg,
                              /*dst_offset=*/next_state_group_offset,
                              /*src=*/tmp_group);
       continue;
     }
 
     if (edge.start_groups.contains(group_index)) {
-      builder.insert_store32(/*dst_base=*/new_state_group_base,
+      builder.insert_store32(/*dst_base=*/next_state_base_reg,
                              /*dst_offset=*/next_state_group_offset,
                              /*src=*/current_index);
     } else {
-      builder.insert_load32(tmp_group, current_state_group_base,
+      builder.insert_load32(tmp_group, current_state_base_reg,
                             current_state_group_offset);
-      builder.insert_store32(/*dst_base=*/new_state_group_base,
+      builder.insert_store32(/*dst_base=*/next_state_base_reg,
                              /*dst_offset=*/next_state_group_offset,
                              /*src=*/tmp_group);
     }
 
     if (edge.end_groups.contains(group_index)) {
-      builder.insert_store32(/*dst_base=*/new_state_group_base,
+      builder.insert_store32(/*dst_base=*/next_state_base_reg,
                              /*dst_offset=*/next_state_group_offset +
                                  sizeof(Group::start_index),
                              /*src=*/current_index);
     } else {
-      builder.insert_load32(tmp_group, current_state_group_base,
+      builder.insert_load32(tmp_group, current_state_base_reg,
                             current_state_group_offset +
                                 sizeof(Group::start_index));
-      builder.insert_store32(/*dst_base=*/new_state_group_base,
+      builder.insert_store32(/*dst_base=*/next_state_base_reg,
                              /*dst_offset=*/next_state_group_offset +
                                  sizeof(Group::start_index),
                              /*src=*/tmp_group);
@@ -212,16 +212,13 @@ auto compile_check_condition(FunctionBuilder &builder,
   if (std::holds_alternative<Codepoint>(condition.type)) {
     // Simple codepoint equality
     auto const target_codepoint = std::get<Codepoint>(condition.type);
-    builder.insert_load32_cmp_imm(Register::rsp, (uint32_t)0,
-                                  target_codepoint.value);
+    builder.insert_cmp_to_imm32(codepoint, target_codepoint.value);
     builder.insert_jump_if_not_zero_flag(skip_node_label);
     return;
   }
 
   // Fallback to c++ implementation
-  builder.insert_load32(CallingConvention::argument[0],
-                        /*base=*/Register::rsp,
-                        /*offset=*/(uint32_t)0);
+  builder.insert_mov32(CallingConvention::argument[0], codepoint);
   std::visit(
       [&]<typename Condition>(Condition const &condition) {
         builder.insert_load_imm64(CallingConvention::argument[1],
@@ -243,26 +240,24 @@ auto compile_impl(std::unique_ptr<RegexGraphImpl> graph)
     // arg[0] = codepoint
     // arg[1] = last_index
     // arg[2] = current_index
-    // arg[3] = current_state
-    // arg[4] = next_state
+    // arg[3] = current_state_base_addr
+    // arg[4] = next_state_base_addr
 
     // Respect the c++ calling convention around us
     for (auto reg : CallingConvention::callee_saved) {
       builder.mark_saved(reg);
     }
 
-    builder.insert_push(CallingConvention::argument[0]);
+    builder.insert_mov32(codepoint, CallingConvention::argument[0]);
 
     builder.insert_mov32(last_index, CallingConvention::argument[1]);
     builder.insert_mov32(current_index, CallingConvention::argument[2]);
 
-    builder.insert_mov64(current_state_reg, CallingConvention::argument[3]);
-    builder.insert_mov64(next_state_reg, CallingConvention::argument[4]);
+    builder.insert_mov64(current_state_base_reg,
+                         CallingConvention::argument[3]);
+    builder.insert_mov64(next_state_base_reg, CallingConvention::argument[4]);
 
-    builder.insert_load64(current_state_counter_base, current_state_reg,
-                          offsetof(StateAtIndex, counters));
-    builder.insert_load64(next_state_counter_base, next_state_reg,
-                          offsetof(StateAtIndex, counters));
+    builder.insert_xor(did_accept_any_state, did_accept_any_state);
 
     for (auto const &[state_index, node] :
          std::views::enumerate(graph->all_nodes)) {
@@ -274,11 +269,14 @@ auto compile_impl(std::unique_ptr<RegexGraphImpl> graph)
       auto const skip_node_label = builder.allocate_label();
       // 1) Is our state active?
       // - Last matching index is stored as the first counter
-      builder.insert_load_cmp32(current_state_counter_base,
-                                /*offset=*/sizeof(unsigned) *
-                                    (graph->counters.size() + 1) * state_index,
-                                /*compare_to=*/last_index);
+      builder.insert_load_cmp32(
+          current_state_base_reg,
+          /*offset=*/StateAtIndex::counter_offset(*graph) +
+              sizeof(CounterType) * (graph->counters.size() + 1) * state_index,
+          /*compare_to=*/last_index);
       builder.insert_jump_if_not_zero_flag(skip_node_label);
+
+      builder.insert_load_imm32(did_accept_any_state, 1);
 
       // 2) Evaluate our condition
       // - Load the codepoint from TOS
@@ -292,16 +290,15 @@ auto compile_impl(std::unique_ptr<RegexGraphImpl> graph)
       builder.attach_label(skip_node_label);
     }
 
-    builder.insert_pop(Register::rax);
+    builder.insert_mov32(CallingConvention::ret, did_accept_any_state);
   });
 
   assembler.apply_all_fixups();
 
   auto section = ExecutableSection{assembler.program.data};
   auto entry_point_ptr =
-      section.get_fn_ptr<void, Codepoint, evaluation::IndexType,
-                         evaluation::IndexType, evaluation::StateAtIndex *,
-                         evaluation::StateAtIndex *>(
+      section.get_fn_ptr<bool, Codepoint, evaluation::IndexType,
+                         evaluation::IndexType, void *, void *>(
           assembler.label_to_location[entry_point]);
   return std::make_unique<RegexCompiledImpl>(
       std::move(graph), std::move(section), entry_point_ptr);
@@ -325,8 +322,13 @@ auto RegexCompiledImpl::evaluate(std::string_view text) const
     Codepoint codepoint =
         parse_utf8_char(text.substr(current_index), codepoint_size);
 
-    std::invoke(m_entrypoint, codepoint, current_index,
-                current_index + codepoint_size, current_state, next_state);
+    auto did_accept_any_state = std::invoke(
+        m_entrypoint, codepoint, current_index, current_index + codepoint_size,
+        (void *)current_state->groups, (void *)next_state->groups);
+
+    if (not did_accept_any_state) {
+       return all_state.calculate_match_result(next_state, *m_graph, text);
+    }
 
     current_index += codepoint_size;
     std::swap(current_state, next_state);

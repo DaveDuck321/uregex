@@ -46,10 +46,8 @@ public:
 } // namespace jit
 
 struct RegexCompiledImpl {
-  using EntryPointFn = void (*)(Codepoint, evaluation::IndexType,
-                                evaluation::IndexType,
-                                evaluation::StateAtIndex *,
-                                evaluation::StateAtIndex *);
+  using EntryPointFn = bool (*)(Codepoint, evaluation::IndexType,
+                                evaluation::IndexType, void *, void *);
   std::unique_ptr<RegexGraphImpl> m_graph;
   jit::ExecutableSection m_executable;
   EntryPointFn m_entrypoint;

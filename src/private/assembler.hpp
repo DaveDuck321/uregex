@@ -273,6 +273,13 @@ public:
     program->insert_immediate(imm);
   }
 
+  constexpr auto insert_or_imm8(Register reg, uint8_t imm) -> void {
+    maybe_insert_rex(reg);
+    program->insert_byte(0x83U);
+    insert_modrm(1, /*mod=*/0b11, reg);
+    program->insert_immediate(imm);
+  }
+
   constexpr auto insert_xor(Register dst, Register src) -> void {
     maybe_insert_rex(dst, src);
     program->insert_byte(0x31);

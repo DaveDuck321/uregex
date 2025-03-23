@@ -276,7 +276,7 @@ auto compile_impl(std::unique_ptr<RegexGraphImpl> graph)
           /*compare_to=*/last_index);
       builder.insert_jump_if_not_zero_flag(skip_node_label);
 
-      builder.insert_load_imm32(did_accept_any_state, 1);
+      builder.insert_or_imm8(did_accept_any_state, 1);
 
       // 2) Evaluate our condition
       // - Load the codepoint from TOS
@@ -327,7 +327,7 @@ auto RegexCompiledImpl::evaluate(std::string_view text) const
         (void *)current_state->groups, (void *)next_state->groups);
 
     if (not did_accept_any_state) {
-       return all_state.calculate_match_result(next_state, *m_graph, text);
+      return all_state.calculate_match_result(next_state, *m_graph, text);
     }
 
     current_index += codepoint_size;

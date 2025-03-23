@@ -54,6 +54,7 @@ struct Edge {
 
 struct Node {
   size_t index;
+  size_t incoming_edges;
   Condition condition;
   std::vector<Edge> edges;
 };

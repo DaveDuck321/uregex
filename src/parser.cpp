@@ -605,7 +605,7 @@ constexpr auto atom_class_to(Atom::CharacterClass input) -> T {
 
 constexpr auto allocate_node(std::vector<std::unique_ptr<Node>> &all_nodes,
                              Condition condition) -> Node * {
-  all_nodes.emplace_back(new Node{all_nodes.size(), condition, {}});
+  all_nodes.emplace_back(new Node{all_nodes.size(), 0, condition, {}});
   return all_nodes.back().get();
 }
 
@@ -724,6 +724,7 @@ auto merge_fragments(Fragment &lhs, Fragment &rhs) -> Fragment {
       for (auto &group : input.end_groups) {
         end_groups.insert(group);
       }
+      input.node->incoming_edges += 1;
       previous_output.node->edges.push_back({
           .output_index = input.node->index,
           .start_groups = input.start_groups,
@@ -795,6 +796,7 @@ auto build_piece_fragment(Piece const &piece,
             for (auto &input : atom_fragment.inputs) {
               input.counters.insert(counter);
               for (auto &output : atom_fragment.outputs) {
+                input.node->incoming_edges += 1;
                 output.node->edges.push_back({
                     .output_index = input.node->index,
                     .start_groups = input.start_groups,
@@ -814,6 +816,7 @@ auto build_piece_fragment(Piece const &piece,
             for (auto &input : atom_fragment.inputs) {
               input.counters.insert(counter);
               for (auto &output : atom_fragment.outputs) {
+                input.node->incoming_edges += 1;
                 output.node->edges.push_back({
                     .output_index = input.node->index,
                     .start_groups = input.start_groups,

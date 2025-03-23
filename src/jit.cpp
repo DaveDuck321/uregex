@@ -32,80 +32,12 @@ constexpr auto current_index = CallingConvention::callee_saved[3];
 constexpr auto did_accept_any_state = CallingConvention::callee_saved[4];
 constexpr auto codepoint = CallingConvention::callee_saved[5];
 
-auto compile_edge_transition(FunctionBuilder &builder,
-                             RegexGraphImpl const &graph, Edge const &edge,
-                             size_t current_state) -> void {
-
+auto compile_commit_new_state(
+    FunctionBuilder &builder, RegexGraphImpl const &graph, Edge const &edge,
+    size_t current_state, std::vector<Label> const &commit_from_counter_labels)
+    -> void {
   static constexpr auto computed_counter_value =
       CallingConvention::temporary[0];
-
-  auto const commit_new_state = builder.allocate_label();
-  auto const abandon_transition = builder.allocate_label();
-
-  // - The first counter is set to the current index if we've already
-  // added the state at this iteration.
-  builder.insert_load_cmp32(
-      next_state_base_reg,
-      /*offset=*/StateAtIndex::counter_offset(graph) +
-          sizeof(CounterType) * (graph.counters.size() + 1) * edge.output_index,
-      /*compare_to=*/current_index);
-  builder.insert_jump_if_not_zero_flag(commit_new_state);
-
-  // We can skip over the first N-counters if we've already incidentally proved
-  // that they're unchanged. Allocate the labels ahead of time.
-  std::vector<Label> commit_from_counter_labels;
-  commit_from_counter_labels.reserve(graph.counters.size());
-  for (size_t counter_index = 0; counter_index < graph.counters.size();
-       counter_index += 1) {
-    commit_from_counter_labels.push_back(builder.allocate_label());
-  }
-
-  // Now we need to consider the remaining counters one at a time
-  for (auto const &[counter_index, counter_type] :
-       std::views::enumerate(graph.counters)) {
-    bool is_incremented = edge.counters.contains(counter_index);
-
-    size_t const current_state_counter_offset =
-        StateAtIndex::counter_offset(graph) +
-        sizeof(CounterType) *
-            ((graph.counters.size() + 1) * current_state + counter_index + 1);
-
-    size_t const next_state_counter_offset =
-        StateAtIndex::counter_offset(graph) +
-        sizeof(CounterType) * ((graph.counters.size() + 1) * edge.output_index +
-                               counter_index + 1);
-
-    // TODO: maybe just issue an add with a memory operand?
-    builder.insert_load32(computed_counter_value, current_state_base_reg,
-
-                          current_state_counter_offset);
-
-    if (is_incremented) {
-      builder.insert_add(computed_counter_value, 1);
-    }
-
-    // test_result = next_state_counter[counter] - computed_counter
-    builder.insert_load_cmp32(next_state_base_reg, next_state_counter_offset,
-                              /*compare_to=*/computed_counter_value);
-
-    // Fallthrough when equal
-    if (counter_type == Counter::greedy) {
-      // Abandon when CF=0 & ZF=0
-      // Accept when CF=1
-      builder.insert_jump_if_not_carry_nor_zero_flag(abandon_transition);
-      builder.insert_jump_if_carry_flag(
-          commit_from_counter_labels[counter_index]);
-    } else {
-      // Abandon when CF=1
-      // Accept when CF=0 & ZF=0
-      builder.insert_jump_if_carry_flag(abandon_transition);
-      builder.insert_jump_if_not_carry_nor_zero_flag(
-          commit_from_counter_labels[counter_index]);
-    }
-  }
-  // We've failed to accept this transition, we might as well abandon it
-  builder.insert_jump(abandon_transition);
-  builder.attach_label(commit_new_state);
 
   // 1) Commit new counters
   // - Commit the current index
@@ -197,6 +129,91 @@ auto compile_edge_transition(FunctionBuilder &builder,
                              /*src=*/tmp_group);
     }
   }
+}
+
+auto compile_edge_transition(FunctionBuilder &builder,
+                             RegexGraphImpl const &graph, Edge const &edge,
+                             size_t current_state) -> void {
+  static constexpr auto computed_counter_value =
+      CallingConvention::temporary[0];
+
+  // We can skip over the first N-counters if we've already incidentally proved
+  // that they're unchanged. Allocate the labels ahead of time.
+  std::vector<Label> commit_from_counter_labels;
+  commit_from_counter_labels.reserve(graph.counters.size());
+  for (size_t counter_index = 0; counter_index < graph.counters.size();
+       counter_index += 1) {
+    commit_from_counter_labels.push_back(builder.allocate_label());
+  }
+
+  // Special case: we can skip all the compares if we know that there's only one
+  // incoming edge.
+  if (graph.all_nodes[edge.output_index]->incoming_edges == 1) {
+    compile_commit_new_state(builder, graph, edge, current_state,
+                             commit_from_counter_labels);
+    return;
+  }
+
+  auto const commit_new_state = builder.allocate_label();
+  auto const abandon_transition = builder.allocate_label();
+
+  // - The first counter is set to the current index if we've already
+  // added the state at this iteration.
+  builder.insert_load_cmp32(
+      next_state_base_reg,
+      /*offset=*/StateAtIndex::counter_offset(graph) +
+          sizeof(CounterType) * (graph.counters.size() + 1) * edge.output_index,
+      /*compare_to=*/current_index);
+  builder.insert_jump_if_not_zero_flag(commit_new_state);
+
+  // Now we need to consider the remaining counters one at a time
+  for (auto const &[counter_index, counter_type] :
+       std::views::enumerate(graph.counters)) {
+    bool is_incremented = edge.counters.contains(counter_index);
+
+    size_t const current_state_counter_offset =
+        StateAtIndex::counter_offset(graph) +
+        sizeof(CounterType) *
+            ((graph.counters.size() + 1) * current_state + counter_index + 1);
+
+    size_t const next_state_counter_offset =
+        StateAtIndex::counter_offset(graph) +
+        sizeof(CounterType) * ((graph.counters.size() + 1) * edge.output_index +
+                               counter_index + 1);
+
+    // TODO: maybe just issue an add with a memory operand?
+    builder.insert_load32(computed_counter_value, current_state_base_reg,
+
+                          current_state_counter_offset);
+
+    if (is_incremented) {
+      builder.insert_add(computed_counter_value, 1);
+    }
+
+    // test_result = next_state_counter[counter] - computed_counter
+    builder.insert_load_cmp32(next_state_base_reg, next_state_counter_offset,
+                              /*compare_to=*/computed_counter_value);
+
+    // Fallthrough when equal
+    if (counter_type == Counter::greedy) {
+      // Abandon when CF=0 & ZF=0
+      // Accept when CF=1
+      builder.insert_jump_if_not_carry_nor_zero_flag(abandon_transition);
+      builder.insert_jump_if_carry_flag(
+          commit_from_counter_labels[counter_index]);
+    } else {
+      // Abandon when CF=1
+      // Accept when CF=0 & ZF=0
+      builder.insert_jump_if_carry_flag(abandon_transition);
+      builder.insert_jump_if_not_carry_nor_zero_flag(
+          commit_from_counter_labels[counter_index]);
+    }
+  }
+  // We've failed to accept this transition, we might as well abandon it
+  builder.insert_jump(abandon_transition);
+  builder.attach_label(commit_new_state);
+  compile_commit_new_state(builder, graph, edge, current_state,
+                           commit_from_counter_labels);
 
   builder.attach_label(abandon_transition);
 }

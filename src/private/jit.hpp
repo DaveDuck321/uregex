@@ -4,11 +4,27 @@
 #include "private/nfa.hpp"
 #include "private/unicode.hpp"
 
+#include <cstdint>
 #include <memory>
+#include <mutex>
 #include <sys/mman.h>
 
 namespace uregex {
 namespace jit {
+class JITDumper {
+  std::mutex m_jitdump_body;
+  size_t m_regex_index;
+  void *m_mapped_region;
+  int m_fd;
+
+public:
+  JITDumper();
+  JITDumper(JITDumper const &) = delete;
+  auto operator=(JITDumper const &) -> JITDumper & = delete;
+  ~JITDumper();
+  auto record_load(std::span<uint8_t const> data, void *loaded_to) -> void;
+};
+
 class ExecutableSection {
   void *m_executable;
   size_t m_size;
@@ -19,9 +35,15 @@ public:
     // Map the binary as exec-only
     int fd = ::memfd_create("exec_section", 0);
     ::write(fd, data.data(), data.size());
-    m_executable = ::mmap(nullptr, data.size(), PROT_EXEC, MAP_PRIVATE, fd, 0);
+    m_executable =
+        ::mmap(nullptr, data.size(), PROT_EXEC | PROT_READ, MAP_PRIVATE, fd, 0);
     m_size = data.size();
     ::close(fd);
+
+#ifdef JITDUMP_PROFILE
+    static JITDumper dumper{};
+    dumper.record_load(data, m_executable);
+#endif
   }
   ExecutableSection(ExecutableSection const &) = delete;
   ExecutableSection(ExecutableSection &&other)

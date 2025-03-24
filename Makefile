@@ -13,6 +13,7 @@ BUILD_DIR := build
 LIB_SOURCES = \
 	src/engine.cpp \
 	src/jit.cpp \
+	src/jitdump.cpp \
 	src/parser.cpp \
 	src/regex.cpp \
 	src/unicode.cpp \

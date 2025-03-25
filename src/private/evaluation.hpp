@@ -197,8 +197,8 @@ struct EvaluationState {
 
   static auto preallocate_initial_state(RegexGraphImpl const &)
       -> std::unique_ptr<uint8_t[]>;
-  auto calculate_match_result(StateAtIndex *current_state,
+  auto calculate_match_result(MatchResult &, StateAtIndex *current_state,
                               RegexGraphImpl const &, std::string_view text)
-      -> MatchResult;
+      -> bool;
 };
 } // namespace uregex::evaluation

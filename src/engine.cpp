@@ -136,38 +136,41 @@ auto EvaluationState::preallocate_initial_state(const RegexGraphImpl &graph)
   return storage;
 }
 
-auto EvaluationState::calculate_match_result(StateAtIndex *current_state,
+auto EvaluationState::calculate_match_result(MatchResult &result,
+                                             StateAtIndex *current_state,
                                              RegexGraphImpl const &graph,
-                                             std::string_view text)
-    -> MatchResult {
-  if (current_state->counters_for(graph.match->index)[0] == text.size()) {
-    // The last character was a match!
-    auto result = MatchResult{text, {}, true};
-    result.groups.reserve(graph.number_of_groups);
-
-    auto const *groups = current_state->groups_for(graph.match->index);
-    for (size_t group_id = 0; group_id < graph.number_of_groups;
-         group_id += 1) {
-      auto const &group = groups[group_id];
-      if (group.start_index != max_index && group.end_index != max_index) {
-        result.groups.push_back(
-            MatchResult::Group{group.start_index, group.end_index});
-      } else if (group.end_index != max_index) {
-        // Zero length match
-        result.groups.push_back(
-            MatchResult::Group{group.end_index, group.end_index});
-      } else {
-        // Unmatched group
-        assert(group.start_index == max_index);
-        result.groups.push_back(std::nullopt);
-      }
-    }
-    return result;
+                                             std::string_view text) -> bool {
+  result.text = text;
+  result.groups.clear();
+  if (current_state->counters_for(graph.match->index)[0] != text.size()) {
+    result.did_match = false;
+    return false;
   }
-  return MatchResult{text, {}, false};
+
+  // The last character was a match!
+  result.did_match = true;
+
+  auto const *groups = current_state->groups_for(graph.match->index);
+  for (size_t group_id = 0; group_id < graph.number_of_groups; group_id += 1) {
+    auto const &group = groups[group_id];
+    if (group.start_index != max_index && group.end_index != max_index) {
+      result.groups.push_back(
+          MatchResult::Group{group.start_index, group.end_index});
+    } else if (group.end_index != max_index) {
+      // Zero length match
+      result.groups.push_back(
+          MatchResult::Group{group.end_index, group.end_index});
+    } else {
+      // Unmatched group
+      assert(group.start_index == max_index);
+      result.groups.push_back(std::nullopt);
+    }
+  }
+  return true;
 }
 
-auto RegexGraph::evaluate(std::string_view text) const -> MatchResult {
+auto RegexGraph::evaluate(MatchResult &result, std::string_view text) const
+    -> bool {
   auto const &graph = *impl_;
 
   auto evaluation_state = EvaluationState{graph};
@@ -206,5 +209,6 @@ auto RegexGraph::evaluate(std::string_view text) const -> MatchResult {
     current_index += codepoint_size;
     std::swap(current_state, next_state);
   }
-  return evaluation_state.calculate_match_result(current_state, graph, text);
+  return evaluation_state.calculate_match_result(result, current_state, graph,
+                                                 text);
 }

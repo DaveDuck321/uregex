@@ -79,6 +79,6 @@ struct RegexCompiledImpl {
       : m_graph{std::move(graph)}, m_executable{std::move(section)},
         m_entrypoint{fn} {};
 
-  auto evaluate(std::string_view text) const -> MatchResult;
+  auto evaluate(MatchResult &result, std::string_view text) const -> bool;
 };
 } // namespace uregex

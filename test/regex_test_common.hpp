@@ -9,10 +9,18 @@
 inline auto match(std::string_view regex, std::string_view string)
     -> uregex::MatchResult {
   auto graph = uregex::parse(regex);
-  auto const cpp_evaluate_result = graph.evaluate(string);
+  uregex::MatchResult cpp_evaluate_result;
+  {
+    bool did_match = graph.evaluate(cpp_evaluate_result, string);
+    CHECK(did_match == cpp_evaluate_result);
+  }
 
   auto compiled = uregex::compile(std::move(graph));
-  auto const jit_evaluate_result = compiled.evaluate(string);
+  uregex::MatchResult jit_evaluate_result;
+  {
+    bool did_match = compiled.evaluate(jit_evaluate_result, string);
+    CHECK(did_match == jit_evaluate_result);
+  }
   CHECK((bool)cpp_evaluate_result == (bool)jit_evaluate_result);
   CHECK(cpp_evaluate_result.groups.size() == jit_evaluate_result.groups.size());
 

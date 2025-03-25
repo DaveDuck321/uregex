@@ -52,7 +52,9 @@ struct RegexGraph {
   RegexGraph(std::unique_ptr<RegexGraphImpl>);
 
   auto visualize(std::ostream &) const -> void;
+
   auto evaluate(std::string_view text) const -> MatchResult;
+  auto evaluate(MatchResult &out, std::string_view text) const -> bool;
 
   RegexGraph(RegexGraph &&) = default;
   auto operator=(RegexGraph &&) -> RegexGraph & = default;
@@ -67,6 +69,7 @@ struct RegexCompiled {
   RegexCompiled(std::unique_ptr<RegexCompiledImpl>);
 
   auto evaluate(std::string_view text) const -> MatchResult;
+  auto evaluate(MatchResult &out, std::string_view text) const -> bool;
 
   RegexCompiled(RegexCompiled &&) = default;
   auto operator=(RegexCompiled &&) -> RegexCompiled & = default;

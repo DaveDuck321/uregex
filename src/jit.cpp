@@ -326,8 +326,8 @@ auto uregex::compile(RegexGraph &&graph) -> RegexCompiled {
   return compile_impl(std::move(graph.impl_));
 }
 
-auto RegexCompiledImpl::evaluate(std::string_view text) const
-    -> uregex::MatchResult {
+auto RegexCompiledImpl::evaluate(uregex::MatchResult &result,
+                                 std::string_view text) const -> bool {
   auto all_state = evaluation::EvaluationState{*m_graph};
 
   auto *current_state = &all_state.m_state_1;
@@ -344,12 +344,14 @@ auto RegexCompiledImpl::evaluate(std::string_view text) const
         (void *)current_state->groups, (void *)next_state->groups);
 
     if (not did_accept_any_state) {
-      return all_state.calculate_match_result(next_state, *m_graph, text);
+      return all_state.calculate_match_result(result, next_state, *m_graph,
+                                              text);
     }
 
     current_index += codepoint_size;
     std::swap(current_state, next_state);
   }
 
-  return all_state.calculate_match_result(current_state, *m_graph, text);
+  return all_state.calculate_match_result(result, current_state, *m_graph,
+                                          text);
 }

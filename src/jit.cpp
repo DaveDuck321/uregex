@@ -48,11 +48,8 @@ auto compile_commit_new_state(
                          /*src=*/current_index);
 
   // - Commit each counter
-  for (auto const &[counter_index, counter_type] :
-       std::views::enumerate(graph.counters)) {
-    builder.attach_label(commit_from_counter_labels[counter_index]);
-    bool is_incremented = edge.counters.contains(counter_index);
-
+  for (size_t counter_index = 0; counter_index < graph.counters.size();
+       counter_index += 1) {
     size_t const current_state_counter_offset =
         StateAtIndex::counter_offset(graph) +
         sizeof(CounterType) *
@@ -63,6 +60,9 @@ auto compile_commit_new_state(
         sizeof(CounterType) * ((graph.counters.size() + 1) * edge.output_index +
                                counter_index + 1);
 
+    builder.attach_label(commit_from_counter_labels[counter_index]);
+    bool is_incremented = edge.counters.contains(counter_index);
+
     // TODO: maybe just issue an add with a memory operand?
     builder.insert_load32(computed_counter_value, current_state_base_reg,
                           current_state_counter_offset);
@@ -71,7 +71,6 @@ auto compile_commit_new_state(
       builder.insert_add(computed_counter_value, 1);
     }
 
-    // test_result = next_state_counter[counter] - computed_counter
     builder.insert_store32(/*dst_base=*/next_state_base_reg,
                            /*dst_offset=*/next_state_counter_offset,
                            /*src=*/computed_counter_value);
@@ -146,8 +145,8 @@ auto compile_edge_transition(FunctionBuilder &builder,
     commit_from_counter_labels.push_back(builder.allocate_label());
   }
 
-  // Special case: we can skip all the compares if we know that there's only one
-  // incoming edge.
+  // Special case: we can skip all the counter compares if we know that there's
+  // only one incoming edge (we have already checked the actual node condition).
   if (graph.all_nodes[edge.output_index]->incoming_edges == 1) {
     compile_commit_new_state(builder, graph, edge, current_state,
                              commit_from_counter_labels);
@@ -183,7 +182,6 @@ auto compile_edge_transition(FunctionBuilder &builder,
 
     // TODO: maybe just issue an add with a memory operand?
     builder.insert_load32(computed_counter_value, current_state_base_reg,
-
                           current_state_counter_offset);
 
     if (is_incremented) {
@@ -198,15 +196,21 @@ auto compile_edge_transition(FunctionBuilder &builder,
     if (counter_type == Counter::greedy) {
       // Abandon when CF=0 & ZF=0
       // Accept when CF=1
-      builder.insert_jump_if_not_carry_nor_zero_flag(abandon_transition);
       builder.insert_jump_if_carry_flag(
           commit_from_counter_labels[counter_index]);
+
+      if ((size_t)counter_index != graph.counters.size() - 1) {
+        builder.insert_jump_if_not_carry_nor_zero_flag(abandon_transition);
+      }
     } else {
       // Abandon when CF=1
       // Accept when CF=0 & ZF=0
-      builder.insert_jump_if_carry_flag(abandon_transition);
       builder.insert_jump_if_not_carry_nor_zero_flag(
           commit_from_counter_labels[counter_index]);
+
+      if ((size_t)counter_index != graph.counters.size() - 1) {
+        builder.insert_jump_if_carry_flag(abandon_transition);
+      }
     }
   }
   // We've failed to accept this transition, we might as well abandon it

@@ -29,9 +29,9 @@ struct StateAtIndex {
 
   StateAtIndex(uint8_t storage[], size_t node_count, size_t counter_count,
                size_t group_count)
-      : groups{reinterpret_cast<Group *>(&storage[0])},
-        counters{reinterpret_cast<CounterType *>(
-            &storage[group_allocation_size(node_count, group_count)])},
+      : groups{reinterpret_cast<Group *>(
+            &storage[counter_allocation_size(node_count, counter_count)])},
+        counters{reinterpret_cast<CounterType *>(&storage[0])},
         counter_stride{counter_count + 1}, group_stride{group_count} {}
 
   StateAtIndex(RegexGraphImpl const &graph, uint8_t storage[])
@@ -44,9 +44,8 @@ struct StateAtIndex {
     return sizeof(CounterType) * (counter_count + 1) * node_count;
   }
 
-  static constexpr auto counter_offset(RegexGraphImpl const &graph) -> size_t {
-    return group_allocation_size(graph.all_nodes.size(),
-                                 graph.number_of_groups);
+  static constexpr auto counter_offset(RegexGraphImpl const &) -> size_t {
+    return 0;
   }
 
   static constexpr auto group_allocation_size(size_t node_count,
@@ -54,8 +53,9 @@ struct StateAtIndex {
     return sizeof(Group) * group_count * node_count;
   }
 
-  static constexpr auto group_offset(RegexGraphImpl const &) -> size_t {
-    return 0;
+  static constexpr auto group_offset(RegexGraphImpl const &graph) -> size_t {
+    return counter_allocation_size(graph.all_nodes.size(),
+                                   graph.counters.size());
   }
 
   static constexpr auto required_allocation_size(size_t node_count,

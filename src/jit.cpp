@@ -26,11 +26,13 @@ namespace {
 constexpr auto current_state_base_reg = CallingConvention::callee_saved[0];
 constexpr auto next_state_base_reg = CallingConvention::callee_saved[1];
 
-constexpr auto last_index = CallingConvention::callee_saved[2];
-constexpr auto current_index = CallingConvention::callee_saved[3];
+constexpr auto indicies = CallingConvention::callee_saved[2];
+constexpr auto codepoint = CallingConvention::callee_saved[3];
 
 constexpr auto did_accept_any_state = CallingConvention::callee_saved[4];
-constexpr auto codepoint = CallingConvention::callee_saved[5];
+constexpr auto lookahead_buffer = CallingConvention::callee_saved[5];
+
+constexpr auto current_index = CallingConvention::temporary[1];
 
 auto compile_commit_new_state(
     FunctionBuilder &builder, RegexGraphImpl const &graph, Edge const &edge,
@@ -223,22 +225,60 @@ auto compile_edge_transition(FunctionBuilder &builder,
 }
 
 auto compile_check_condition(FunctionBuilder &builder,
-                             Condition const &condition, Label skip_node_label)
-    -> void {
+                             RegexGraphImpl const &graph, Node const *node,
+                             Label skip_node_label) -> void {
+  auto const &condition = node->condition;
   // Special cases
   if (std::holds_alternative<category::Any>(condition.type)) {
     return; // We always match
   }
 
   if (std::holds_alternative<Codepoint>(condition.type)) {
-    // Simple codepoint equality
-    auto const target_codepoint = std::get<Codepoint>(condition.type);
-    builder.insert_cmp_to_imm32(codepoint, target_codepoint.value);
+    // Long strings are a very common case where the NFA does poorly
+    // Cheat by evaluating as many characters as possible simultaneously, this
+    // will avoid spurious node activations later in the chain.
+    std::string character_chain;
+    std::vector<size_t> cumulative_length;
+    auto *next_node = node;
+    do {
+      codepoint_to_utf8(character_chain,
+                        std::get<Codepoint>(next_node->condition.type));
+      cumulative_length.push_back(character_chain.size());
+      if (next_node->edges.size() != 1) {
+        break;
+      }
+      next_node = graph.all_nodes[next_node->edges[0].output_index].get();
+    } while (std::holds_alternative<Codepoint>(next_node->condition.type));
+
+    auto const minimum_required_compare_size = cumulative_length[0];
+
+    if (character_chain.size() >= sizeof(uint32_t)) {
+      // Multi-character (or single utf-8 string compare)
+      uint32_t compare_imm = 0;
+      ::memcpy(&compare_imm, character_chain.data(), sizeof(uint32_t));
+      builder.insert_cmp_r32_imm32(lookahead_buffer, compare_imm);
+      builder.insert_jump_if_not_zero_flag(skip_node_label);
+      return;
+    }
+
+    if (minimum_required_compare_size == sizeof(uint8_t)) {
+      // ASCII compare
+      uint8_t compare_imm = 0;
+      ::memcpy(&compare_imm, character_chain.data(), sizeof(uint8_t));
+      builder.insert_cmp_r8_imm8(lookahead_buffer, compare_imm);
+      builder.insert_jump_if_not_zero_flag(skip_node_label);
+      return;
+    }
+
+    // Slowpath utf-8 compare
+    builder.insert_cmp_r32_imm32(codepoint,
+                                 std::get<Codepoint>(condition.type).value);
     builder.insert_jump_if_not_zero_flag(skip_node_label);
     return;
   }
 
   // Fallback to c++ implementation
+  builder.insert_push(current_index);
   builder.insert_mov32(CallingConvention::argument[0], codepoint);
   std::visit(
       [&]<typename Condition>(Condition const &condition) {
@@ -248,7 +288,9 @@ auto compile_check_condition(FunctionBuilder &builder,
             &evaluation::evaluate_condition));
       },
       condition.type);
-  builder.insert_jump_if_equal(CallingConvention::ret, 0, skip_node_label);
+  // We've just clobbered the current_index... Rematerialize
+  builder.insert_pop(current_index);
+  builder.insert_jump_if_bool_false(CallingConvention::ret, skip_node_label);
 }
 
 auto compile_impl(std::unique_ptr<RegexGraphImpl> graph)
@@ -263,6 +305,7 @@ auto compile_impl(std::unique_ptr<RegexGraphImpl> graph)
     // arg[2] = current_index
     // arg[3] = current_state_base_addr
     // arg[4] = next_state_base_addr
+    // arg[5] = lookahead_buffer
 
     // Respect the c++ calling convention around us
     for (auto reg : CallingConvention::callee_saved) {
@@ -271,15 +314,16 @@ auto compile_impl(std::unique_ptr<RegexGraphImpl> graph)
 
     builder.insert_mov32(codepoint, CallingConvention::argument[0]);
 
-    builder.insert_mov32(last_index, CallingConvention::argument[1]);
     builder.insert_mov32(current_index, CallingConvention::argument[2]);
+    builder.insert_mov32(indicies, CallingConvention::argument[1]);
 
     builder.insert_mov64(current_state_base_reg,
                          CallingConvention::argument[3]);
     builder.insert_mov64(next_state_base_reg, CallingConvention::argument[4]);
 
-    builder.insert_xor(did_accept_any_state, did_accept_any_state);
+    builder.insert_mov32(lookahead_buffer, CallingConvention::argument[5]);
 
+    builder.insert_xor(did_accept_any_state, did_accept_any_state);
     for (auto const &[state_index, node] :
          std::views::enumerate(graph->all_nodes)) {
       if (std::holds_alternative<Condition::Entry>(node->condition.type) ||
@@ -294,14 +338,14 @@ auto compile_impl(std::unique_ptr<RegexGraphImpl> graph)
           current_state_base_reg,
           /*offset=*/StateAtIndex::counter_offset(*graph) +
               sizeof(CounterType) * (graph->counters.size() + 1) * state_index,
-          /*compare_to=*/last_index);
+          /*compare_to=*/indicies);
       builder.insert_jump_if_not_zero_flag(skip_node_label);
 
       builder.insert_or_imm8(did_accept_any_state, 1);
 
       // 2) Evaluate our condition
       // - Load the codepoint from TOS
-      compile_check_condition(builder, node->condition, skip_node_label);
+      compile_check_condition(builder, *graph, node.get(), skip_node_label);
 
       // 3) The condition passes
       for (auto const &edge : node->edges) {
@@ -319,7 +363,7 @@ auto compile_impl(std::unique_ptr<RegexGraphImpl> graph)
   auto section = ExecutableSection{assembler.program.data};
   auto entry_point_ptr =
       section.get_fn_ptr<bool, Codepoint, evaluation::IndexType,
-                         evaluation::IndexType, void *, void *>(
+                         evaluation::IndexType, void *, void *, unsigned>(
           assembler.label_to_location[entry_point]);
   return std::make_unique<RegexCompiledImpl>(
       std::move(graph), std::move(section), entry_point_ptr);
@@ -338,14 +382,51 @@ auto RegexCompiledImpl::evaluate(uregex::MatchResult &result,
   auto *next_state = &all_state.m_state_2;
 
   size_t current_index = 0;
+  size_t lookahead_buffer = 0;
+  if (text.size() < sizeof(lookahead_buffer)) {
+    ::memcpy(&lookahead_buffer, text.data(), text.size());
+    goto copy_final_subword;
+  }
+
+  {
+    std::string_view remaining_text = text;
+    size_t codepoint_size = 0;
+    while (remaining_text.size() >= sizeof(lookahead_buffer)) {
+      remaining_text = sub_unchecked(text, current_index);
+      Codepoint codepoint = parse_utf8_char(remaining_text, codepoint_size);
+
+      ::memcpy(&lookahead_buffer, remaining_text.data(),
+               sizeof(lookahead_buffer));
+
+      auto did_accept_any_state = std::invoke(
+          m_entrypoint, codepoint, current_index,
+          current_index + codepoint_size, (void *)current_state->counters,
+          (void *)next_state->counters, lookahead_buffer);
+
+      if (not did_accept_any_state) {
+        return all_state.calculate_match_result(result, next_state, *m_graph,
+                                                text);
+      }
+
+      current_index += codepoint_size;
+      std::swap(current_state, next_state);
+    }
+
+    lookahead_buffer >>= 8U * codepoint_size;
+  }
+
+copy_final_subword:
   while (current_index < text.size()) {
     size_t codepoint_size = 0;
     Codepoint codepoint =
-        parse_utf8_char(text.substr(current_index), codepoint_size);
+        parse_utf8_char(sub_unchecked(text, current_index), codepoint_size);
 
     auto did_accept_any_state = std::invoke(
         m_entrypoint, codepoint, current_index, current_index + codepoint_size,
-        (void *)current_state->groups, (void *)next_state->groups);
+        (void *)current_state->counters, (void *)next_state->counters,
+        lookahead_buffer);
+
+    lookahead_buffer >>= 8U * codepoint_size;
 
     if (not did_accept_any_state) {
       return all_state.calculate_match_result(result, next_state, *m_graph,
@@ -355,7 +436,6 @@ auto RegexCompiledImpl::evaluate(uregex::MatchResult &result,
     current_index += codepoint_size;
     std::swap(current_state, next_state);
   }
-
   return all_state.calculate_match_result(result, current_state, *m_graph,
                                           text);
 }

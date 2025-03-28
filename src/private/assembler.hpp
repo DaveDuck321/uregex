@@ -192,7 +192,7 @@ class FunctionBuilder {
     value |= (mod << 6U);
     program->insert_byte(value);
 
-    if ((std::to_underlying(rm) & 0b111) == 0b100) {
+    if (mod != 0b11 && (std::to_underlying(rm) & 0b111) == 0b100) {
       // Special case for SP or r12 displacements
       program->insert_byte(0x24); // SIB byte
     }
@@ -208,7 +208,7 @@ class FunctionBuilder {
     value |= (mod << 6U);
     program->insert_byte(value);
 
-    if ((std::to_underlying(rm) & 0b111) == 0b100) {
+    if (mod != 0b11 && (std::to_underlying(rm) & 0b111) == 0b100) {
       // Special case for SP or r12 displacements
       program->insert_byte(0x24); // SIB byte
     }
@@ -352,11 +352,45 @@ public:
     insert_modrm(2, /*mod=*/0b11, /*rm=*/call_address);
   }
 
-  constexpr auto insert_cmp_to_imm32(Register reg, uint32_t compare_to)
+  constexpr auto insert_cmp_r8_imm8(Register reg, uint8_t compare_to) -> void {
+    maybe_insert_rex(reg);
+    program->insert_byte(0x80);
+    insert_modrm(7, /*mod=*/0b11, reg);
+    program->insert_immediate(compare_to);
+  }
+
+  constexpr auto insert_cmp_r32_imm32(Register reg, uint32_t compare_to)
       -> void {
     maybe_insert_rex(reg);
     program->insert_byte(0x81);
     insert_modrm(7, /*mod=*/0b11, reg);
+    program->insert_immediate(compare_to);
+  }
+
+  constexpr auto insert_shiftl_r64(Register reg, uint8_t imm) -> void {
+    insert_rex(true, reg);
+    program->insert_byte(0xc1);
+    insert_modrm(4, /*mod=*/0b11, reg);
+    program->insert_immediate(imm);
+  }
+
+  constexpr auto insert_shiftr_r64(Register reg, uint8_t imm) -> void {
+    insert_rex(true, reg);
+    program->insert_byte(0xc1);
+    insert_modrm(5, /*mod=*/0b11, reg);
+    program->insert_immediate(imm);
+  }
+
+  constexpr auto insert_or_r64(Register dst, Register src) -> void {
+    insert_rex(true, dst, src);
+    program->insert_byte(0x09);
+    insert_modrm(src, /*mod=*/0b11, dst);
+  }
+
+  constexpr auto insert_test_imm8(Register reg, uint8_t compare_to) -> void {
+    maybe_insert_rex(reg);
+    program->insert_byte(0xf6);
+    insert_modrm(0, /*mod=*/0b11, reg);
     program->insert_immediate(compare_to);
   }
 
@@ -405,11 +439,11 @@ public:
     insert_reference_to_label(target_if_zero, Fixup::Type::relative_4_bytes);
   }
 
-  constexpr auto insert_jump_if_equal(Register reg, uint32_t imm,
-                                      Label target_if_equal) -> void {
+  constexpr auto insert_jump_if_bool_false(Register reg, Label target_if_false)
+      -> void {
     maybe_insert_rex(reg);
-    insert_cmp_to_imm32(reg, imm);
-    insert_jump_if_zero_flag(target_if_equal);
+    insert_test_imm8(reg, 1);
+    insert_jump_if_zero_flag(target_if_false);
   }
 
   constexpr auto insert_jump(Label target) -> void {

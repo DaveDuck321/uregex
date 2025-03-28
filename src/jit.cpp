@@ -341,11 +341,11 @@ auto compile_impl(std::unique_ptr<RegexGraphImpl> graph)
           /*compare_to=*/indicies);
       builder.insert_jump_if_not_zero_flag(skip_node_label);
 
-      builder.insert_or_imm8(did_accept_any_state, 1);
-
       // 2) Evaluate our condition
       // - Load the codepoint from TOS
       compile_check_condition(builder, *graph, node.get(), skip_node_label);
+
+      builder.insert_or_imm8(did_accept_any_state, 1);
 
       // 3) The condition passes
       for (auto const &edge : node->edges) {

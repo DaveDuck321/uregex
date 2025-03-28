@@ -945,11 +945,14 @@ auto uregex::parse(std::string_view regex_string) -> RegexGraph {
       .all_nodes = std::move(all_nodes),
       .counters = std::move(all_counters),
       .initial_state = nullptr,
+      .current_state = nullptr,
       .entry = entry_node,
       .match = match_node,
       .number_of_groups = number_of_groups,
   });
   graph->initial_state =
+      evaluation::EvaluationState::preallocate_initial_state(*graph);
+  graph->current_state =
       evaluation::EvaluationState::preallocate_initial_state(*graph);
   return RegexGraph{std::move(graph)};
 }

@@ -94,9 +94,7 @@ inline auto replace_if_better(StateAtIndex &state_to_update,
 } // namespace
 
 EvaluationState::EvaluationState(RegexGraphImpl const &graph)
-    : m_storage{(uint8_t *)::malloc(
-          2 * StateAtIndex::required_allocation_size(graph))},
-      m_state_1{graph, m_storage},
+    : m_storage{graph.current_state.get()}, m_state_1{graph, m_storage},
       m_state_2{graph,
                 m_storage + StateAtIndex::required_allocation_size(graph)} {
   ::memcpy(m_storage, graph.initial_state.get(),

@@ -191,9 +191,6 @@ struct EvaluationState {
   StateAtIndex m_state_2;
 
   explicit EvaluationState(RegexGraphImpl const &);
-  EvaluationState(EvaluationState const &) = delete;
-  auto operator=(EvaluationState const &) -> EvaluationState & = delete;
-  ~EvaluationState() { ::free(m_storage); }
 
   static auto preallocate_initial_state(RegexGraphImpl const &)
       -> std::unique_ptr<uint8_t[]>;

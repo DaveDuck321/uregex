@@ -198,4 +198,9 @@ struct EvaluationState {
                               RegexGraphImpl const &, std::string_view text)
       -> bool;
 };
+
+constexpr auto sub_unchecked(std::string_view view, size_t start_index)
+    -> std::string_view {
+  return {view.data() + start_index, view.size() - start_index};
+}
 } // namespace uregex::evaluation

@@ -4,7 +4,7 @@ OBJCOPY := objcopy
 CXX_FLAGS := -g -std=c++26 -Wall -Wpedantic -Werror -Wextra
 CXX_FLAGS += -Iinclude
 
-DEBUG_CXX_FLAGS += -O0 -fsanitize=undefined -fsanitize=address
+DEBUG_CXX_FLAGS += -O0
 RELEASE_CXX_FLAGS += -O3
 LIB_CXX_FLAGS += -Isrc/
 

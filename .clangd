@@ -4,6 +4,7 @@ CompileFlags:
     - "-I../../include/"
     - "-I../src/"
     - "-I../../src/"
+    - "-I.."
     - "-Isrc/"
     - "-Iinclude"
     - "-std=c++26"

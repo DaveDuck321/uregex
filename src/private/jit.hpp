@@ -39,7 +39,7 @@ public:
         ::mmap(nullptr, data.size(), PROT_EXEC | PROT_READ, MAP_PRIVATE, fd, 0);
     m_size = data.size();
     ::close(fd);
-
+#define JITDUMP_PROFILE
 #ifdef JITDUMP_PROFILE
     static JITDumper dumper{};
     dumper.record_load(data, m_executable);

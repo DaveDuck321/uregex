@@ -1,0 +1,1024 @@
+strict
+break
+Store2
+Node
+RTLIB
+else
+case
+isVector
+ = 
+DAG
+STRICT
+();
+are
+expandFP
+ = 
+i32
+ELTS
+SrcAlign
+SINT
+push
+ReplaceNode
+State
+min
+ == 
+emitError
+)) {
+libcalls
+type
+SPReg
+Order
+());
+CallResult
+SDVTList
+ISD
+number
+ISD
+(), 
+its
+first
+ = 
+Tmp3
+cast
+ISD
+MUL
+don
+EXTEND
+ = 
+NewLoad
+divide
+the
+getOperand
+XINT
+ = 
+DAG
+AREA
+SDNode
+// 
+SDValue
+concat
+SDValue
+SDValue
+Node
+Node
+F64
+EltVT
+(), /*
+)) {
+// 
+TRUNCATE
+F80
+the
+SETULT
+the
+ = 
+type
+break
+Node
+isSigned
+ = 
+std
+TargetLowering
+Node
+();
+Node
+with
+ = 
+// 
+else
+for
+DAG
+Tmp4
+ExpandLibCall
+LROUND
+getSetCC
+NumElts
+getVectorShuffle
+the
+Idx
+TCChain
+STRICT
+here
+getOperand
+float
+ISD
+shuffle
+I64
+bf16
+are
+ValRes
+SAT
+break
+ConstantSDNode
+ == 
+for
+push
+TLI
+doubles
+NewVec
+DAG
+getNode
+SDValue
+Rounding
+i64
+SETUP
+cast
+getOperand
+FMINIMUMNUM
+scalbn
+AddNegSmallestNormal
+IntPtr
+");
+: {
+Node
+SINT
+target
+Tmp3
+ = 
+IncN1
+SignMask
+MemVT
+getNode
+case
+and
+into
+continue
+getIndex
+Tmp
+Node
+SAT
+IsStrict
+CCOperand
+RTLIB
+EVT
+ISD
+: {
+));
+FIXME
+break
+SDValue
+EXTLOAD
+ISD
+Stores
+NVT
+them
+produces
+, /*
+type
+(), 
+SrcOp
+EXTEND
+NewLoadOperands
+isSigned
+ISD
+bitcastToAPInt
+legal
+NewScalarVT
+SelectX
+second
+ = 
+ = 
+back
+RTLIB
+EltVT
+// 
+cast
+CPIdx
+case
+SDValue
+Tmp1
+Node
+back
+)->
+Tmp1
+push
+FMODF
+value
+Tmp4
+legalized
+stack
+the
+getNode
+getNode
+Node
+SDValue
+()),
+NVT
+getOpcode
+FCOPYSIGN
+// 
+Tmp1
+/// 
+getNode
+CondCode
+NumElems
+RTLIB
+SmallSetVector
+IsStrict
+else
+Tmp3
+Unexpected
+MulExpansionKind
+Value1
+match
+break
+DAG
+txt
+ == 
+ = 
+getValueType
+getValue
+FACOS
+Node
+break
+();
+ISD
+FMINIMUMNUM
+Node
+sign
+));
+STRICT
+cases
+ISD
+());
+getOpcode
+insert
+DAG
+getValueType
+));
+FACOS
+SDLoc
+which
+get
+REDUCE
+shouldn
+getNode
+getNode
+UINT
+ISD
+ISD
+) {
+F32
+fesetmode
+CBRT
+TargetConstant
+PTy
+));
+VACOPY
+RTLIB
+FLOG2
+EVT
+AND
+EVT
+Libcall
+the
+Libcall
+this
+, /*
+the
+ISD
+break
+ = 
+Type
+type
+each
+SignBit
+case
+ = 
+DAG
+perform
+back
+getSetCC
+));
+extend
+back
+MVT
+ISD
+EXTEND
+NVT
+)) {
+ = 
+DAG
+SDIV
+STRICT
+MVT
+Big
+ = 
+vector
+for
+F64
+ = 
+: {
+DAG
+getNode
+AND
+int
+supports
+UDIV
+getFixed
+case
+get
+SDValue
+Ran
+RHS
+// 
+Results
+Node
+large
+ = 
+");
+DAG
+the
+Tmp1
+MODE
+ISD
+ && 
+, /*
+OVT
+case
+ZERO
+Tmp2
+&& 
+// 
+this
+ISD
+// 
+getValueType
+ = 
+wider
+Node
+SVT
+RTLIB
+PPC
+back
+break
+MULHU
+FLOG10
+isTailCall
+back
+EVT
+dbgs
+LIBCALL
+getOperand
+Value
+Node
+getEntryNode
+load
+ISD
+LegalizeOp
+getOpcode
+assert
+unsigned
+ != 
+Results
+back
+isObjectScalable
+ExpandFPLibCall
+the
+Other
+One
+getEntryNode
+getIndex
+Tmp1
+getOperationAction
+SDValue
+BUILD
+type
+push
+DAG
+SDValue
+getReturnType
+ <= 
+getOriginalAlign
+final
+back
+adds
+i64
+atomic
+();
+();
+// 
+(); 
+with
+LOAD
+SDValue
+case
+ISD
+ExpVT
+// 
+ != 
+SDValue
+SelectionDAGLegalize
+ISD
+case
+I32
+ '((
+() << "
+ExpandINSERT
+getFPLibCall
+Node
+ISD
+SETCC
+push
+type
+Extract
+:      " : "      
+Node
+UDIVFIXSAT
+ScaleUp0
+break
+ExtraWidth
+getValueType
+operations
+EVT
+USUBO
+ExpandFPLibCall
+DestVT
+), 
+DAG
+Tmp1
+DEBUG
+Alignment
+// 
+REM
+(), 
+State
+getConstant
+MemVT
+RTLIB
+else
+) && "
+IsSigned
+that
+), 
+RHS
+Chain
+const
+ISD
+getTypeAction
+Node
+Chain
+have
+Other
+push
+DAG
+getNode
+SDValue
+NVT
+getOperand
+Tmp1
+DAG
+) {
+code
+FloatVT
+ == 
+();
+users
+ReplaceAllUsesOfValueWith
+figure
+back
+ (!
+Tmp1
+SDNode
+Node
+example
+ClampN
+ = 
+LegalizeOp
+SDValue
+ = 
+SDVTList
+ == 
+STRICT
+() &&
+getNode
+instead
+STRICT
+fltSemantics
+DAG
+that
+getOperand
+VECTOR
+Emit
+DataLayout
+getVTList
+can
+ = 
+getConstantFP
+CondCodeSDNode
+();
+Sub
+out
+) {
+SDNode
+Small
+UADDO
+SDLoc
+), 
+getPointerTy
+getNode
+back
+pair
+SmallVectorImpl
+getValueType
+IsStrict
+SDValue
+legal
+ > 
+back
+IdxOffset
+LowerOperation
+anything
+SType
+ISD
+Old
+MVT
+BSWAP
+out
+(), 
+TLI
+libcall
+FPENV
+emitted
+SDValue
+case
+Iterate
+ClearSignMask
+TLI
+)});
+getNode
+using
+F32
+isOperationLegalOrCustom
+PPCF128
+ISD
+Concat
+SJLJ
+)));
+().
+) &&
+.  
+MVT
+IsStrict
+SignMask
+SDNode
+first
+), 
+Results
+Action
+ResultPair
+ = 
+DEBUG
+case
+else
+.");
+ISD
+SRA
+STRICT
+DAG
+replacing
+push
+SDValue
+request
+ISD
+)->
+break
+// 
+ = 
+CastVec
+Node
+SDValue
+Tmp1
+: {
+match
+OFFSET
+Get
+) {
+break
+");
+SDLoc
+pairs
+TruncOp
+the
+()};
+ISD
+());
+push
+which
+IntVT
+for
+the
+handle
+ISD
+getNode
+ISD
+ = 
+False
+ = 
+appropriate
+ISD
+with
+getSizeInBits
+also
+TLI
+ == 
+RTLIB
+SDNode
+DAG
+one
+larger
+Res
+MVT
+target
+getEntryNode
+getNode
+ = 
+Tmp1
+ResVT
+Node
+Res
+FMINIMUM
+MVT
+case
+RTLIB
+MidVT
+Tmp2
+Res
+back
+ISD
+getNode
+the
+void
+(), 
+ISD
+getNode
+ = 
+Tmp1
+case
+!");
+SDLoc
+Node
+// 
+f32
+SDValue
+cast
+ExpandLibCall
+getOpcode
+bool
+ = 
+Action
+getAnyExtOrTrunc
+MVT
+INSERT
+MUL
+// 
+xform
+.  
+handling
+();
+Results
+SDValue
+StackPtr
+SrcVT
+// 
+have
+break
+For
+() == 
+DAG
+UINT
+which
+the
+DAG
+ACOS
+)) { // 
+condition
+), 
+ReplaceNodeWithValue
+getOperand
+TLI
+Res
+does
+// 
+ISD
+back
+store
+back
+ISD
+push
+right
+custom
+gets
+StoreSDNode
+Args
+ExpVT
+RTLIB
+NewLoad
+, {
+ISD
+NewOutTy
+TruncOp
+and
+ = 
+the
+DAG
+mask
+ ((
+SmallVectorImpl
+PairTy
+return
+FMINIMUMNUM
+this
+its
+ = (
+EXP2
+SmallPtrSet
+ISD
+SAT
+type
+isn
+RetTy
+StoreSDNode
+TRAP
+())
+DAG
+) {
+down
+Increment1
+)->
+() &&
+ = 
+Results
+ISD
+ + 
+DAG
+Shift
+());
+ = 
+getShiftAmountTy
+NumElems
+ANY
+DAG
+insert
+assert
+unsigned
+DAG
+()));
+case
+for
+bits
+RTLIB
+ : 
+getExtLoad
+ConstantFP
+scalbn
+values
+The
+Results
+isTarget
+case
+CallingConv
+FADD
+// 
+NVT
+Mode
+Con
+lie
+chain
+ = 
+One
+SIGN
+that
+SDValue
+EXP
+Tmp1
+IntVT
+push
+getValueType
+Results
+SETCC
+case
+ = 
+)));
+ISD
+EVT
+Mag
+DAG
+unsigned
+get
+NSW
+Convert
+ = 
+getValueType
+ISD
+the
+the
+getOperand
+DAG
+TruncOp
+know
+getNode
+getContext
+SELECT
+ = 
+ExpandExtractFromVectorThroughStack
+// 
+getValueType
+Idx
+getSizeInBits
+// 
+Results
+SDValue
+getNode
+does
+Mask
+RTLIB
+fadd
+MVT
+())    // 
+the
+replacing
+ISD
+ISD
+));
+ISD
+Invalid
+));
+unsigned
+DestAlign
+ = 
+ = 
+DAG
+illegal
+EVT
+case
+The
+ISD
+ISD
+(),
+SDValue
+ = 
+ScaleDownK
+RTLIB
+Node
+");
+ = 
+for
+getZeroExtendInReg
+Flags
+but
+getNode
+Node
+Turn
+x86
+getHalfSizedIntegerVT
+ADD
+ISD
+original
+), 
+DAG
+DAG
+ = 
+DAG
+Tmp2
+case
+EVT
+getShiftAmountTy
+the
+Node
+are
+Tmp3
+type
+RTLIB
+ = 
+ : 
+Tmp2
+Tmp2
+());
+Tmp1
+getOperationAction
+getNode
+) {
+ = 
+SDValue
+DAG
+TLI
+ ? 
+ ? 
+ASIN
+ISD
+v4i32
+SelectX
+) {
+i32
+ExtOp
+ : 
+const
+ != 
+() == 
+OFFSET
+ISD
+ScaledAsInt
+one
+cannot
+Iterate
+SDValue
+only
+ = 
+ExponentType
+ = 
+), 
+ = 
+SDValue
+Libcall
+Node
+F128
+] = 
+PPCF128
+EXP10
+store
+extract
+SDValue
+NVT
+Swap
+UpdatedNodes
+memory
+case
+Node
+Chain
+custom
+getSetCC
+// 
+DAG
+RTLIB
+IntValue
+ = 
+DAG
+DAG
+));
+AAMDNodes
+SmallPtrSet
+legal
+ = 
+unsigned
+SDValue
+method
+getValueType
+SDValue
+scalar
+getNode
+the
+Chain
+dump
+), 
+DecN0
+DAG
+ = 
+Node
+));
+ != 
+MVT
+Callee
+However
+case
+Node
+INT
+NVT
+isShuffleMaskLegal
+RetTy
+nodes
+ISD
+expand
+F64
+getOriginalAlign
+)) {
+getZeroExtendInReg
+));
+Results
+ = 
+), 
+ : 
+RTLIB
+");
+");
+operands
+InvCC
+IdxVT
+FltSem
+dbgs
+libcalls
+DAG
+DAG
+DAG
+Entry
+return
+ ||
+this
+RTLIB
+NewAtomic
+getScalarValueSizeInBits
+()));
+ISD
+DAG
+getOperand
+getNode

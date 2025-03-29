@@ -36,8 +36,8 @@ constexpr auto current_index = CallingConvention::temporary[1];
 
 auto compile_commit_new_state(
     FunctionBuilder &builder, RegexGraphImpl const &graph, Edge const &edge,
-    size_t current_state, std::vector<Label> const &commit_from_counter_labels)
-    -> void {
+    size_t current_state, std::vector<Label> const &commit_from_counter_labels,
+    bool is_always_accepted) -> void {
   static constexpr auto computed_counter_value =
       CallingConvention::temporary[0];
 
@@ -62,8 +62,25 @@ auto compile_commit_new_state(
         sizeof(CounterType) * ((graph.counters.size() + 1) * edge.output_index +
                                counter_index + 1);
 
-    builder.attach_label(commit_from_counter_labels[counter_index]);
     bool is_incremented = edge.counters.contains(counter_index);
+    bool is_next_incremented = edge.counters.contains(counter_index + 1);
+    bool is_final = counter_index + 1 == graph.counters.size();
+
+    if (!is_incremented && !is_next_incremented && is_always_accepted &&
+        !is_final) {
+      // Special case: we're not touching the counters and we're always accepted
+      // (so there are no conditional jumps into the counter copying loop).
+      // Group consecutive 32-bit copies into a single 64-bit copy.
+      builder.insert_load64(computed_counter_value, current_state_base_reg,
+                            current_state_counter_offset);
+      builder.insert_store64(/*dst_base=*/next_state_base_reg,
+                             /*dst_offset=*/next_state_counter_offset,
+                             /*src=*/computed_counter_value);
+      counter_index += 1;
+      continue;
+    }
+
+    builder.attach_label(commit_from_counter_labels[counter_index]);
 
     // TODO: maybe just issue an add with a memory operand?
     builder.insert_load32(computed_counter_value, current_state_base_reg,
@@ -151,7 +168,7 @@ auto compile_edge_transition(FunctionBuilder &builder,
   // only one incoming edge (we have already checked the actual node condition).
   if (graph.all_nodes[edge.output_index]->incoming_edges == 1) {
     compile_commit_new_state(builder, graph, edge, current_state,
-                             commit_from_counter_labels);
+                             commit_from_counter_labels, true);
     return;
   }
 
@@ -219,7 +236,7 @@ auto compile_edge_transition(FunctionBuilder &builder,
   builder.insert_jump(abandon_transition);
   builder.attach_label(commit_new_state);
   compile_commit_new_state(builder, graph, edge, current_state,
-                           commit_from_counter_labels);
+                           commit_from_counter_labels, false);
 
   builder.attach_label(abandon_transition);
 }

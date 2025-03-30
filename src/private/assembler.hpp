@@ -158,11 +158,15 @@ class FunctionBuilder {
   bool requires_return;
 
   constexpr auto maybe_insert_rex(std::optional<Register> other_reg = {},
-                                  std::optional<Register> rm_reg = {}) -> void {
+                                  std::optional<Register> rm_reg = {},
+                                  bool is_u8 = false) -> void {
     auto reg_encoding = std::to_underlying(rm_reg.value_or(Register::rax));
     auto other_reg_encoding =
         std::to_underlying(other_reg.value_or(Register::rax));
-    if (reg_encoding <= 0b111 && other_reg_encoding <= 0b111) {
+    if ((reg_encoding <= 0b111 && other_reg_encoding <= 0b111) && !is_u8) {
+      return;
+    }
+    if ((reg_encoding <= 0b011 && other_reg_encoding <= 0b011) && is_u8) {
       return;
     }
     insert_rex(/*is_operand=*/false, other_reg, rm_reg);
@@ -189,7 +193,7 @@ class FunctionBuilder {
   }
 
   constexpr auto insert_modrm(Register reg, unsigned mod, Register rm) -> void {
-    assert(mod <= 0b111);
+    assert(mod <= 0b11);
 
     uint8_t value = 0;
     value |= (std::to_underlying(rm) & 0b111);
@@ -205,7 +209,7 @@ class FunctionBuilder {
 
   constexpr auto insert_modrm(uint8_t digit, unsigned mod, Register rm)
       -> void {
-    assert(mod <= 0b111);
+    assert(mod <= 0b11);
 
     uint8_t value = 0;
     value |= (std::to_underlying(rm) & 0b111);
@@ -376,6 +380,13 @@ public:
     program->insert_immediate(compare_to);
   }
 
+  constexpr auto insert_set_if_zero(Register dst) -> void {
+    insert_rex(/*is_operand=*/false, dst);
+    program->insert_byte(0x0F);
+    program->insert_byte(0x94);
+    insert_modrm(0, /*mod=*/0b11, dst);
+  }
+
   constexpr auto insert_shiftl_r64(Register reg, uint8_t imm) -> void {
     insert_rex(true, reg);
     program->insert_byte(0xc1);
@@ -397,10 +408,16 @@ public:
   }
 
   constexpr auto insert_test_imm8(Register reg, uint8_t compare_to) -> void {
-    maybe_insert_rex(reg);
+    maybe_insert_rex(reg, {}, /*is_u8=*/true);
     program->insert_byte(0xf6);
     insert_modrm(0, /*mod=*/0b11, reg);
     program->insert_immediate(compare_to);
+  }
+
+  constexpr auto insert_test(Register r1, Register r2) -> void {
+    maybe_insert_rex(r1, r2, /*is_u8=*/true);
+    program->insert_byte(0x84);
+    insert_modrm(r2, /*mod=*/0b11, r1);
   }
 
   constexpr auto insert_load32_cmp_imm(Register base, uint32_t offset,

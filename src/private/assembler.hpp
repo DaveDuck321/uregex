@@ -117,6 +117,10 @@ struct Assembler {
   template <typename Builder>
   constexpr auto build_function(Label fn_label, Builder &&fn_builder) -> void;
 
+  template <typename Builder>
+  constexpr auto build_out_of_line_block(Label fn_label, Builder &&fn_builder)
+      -> void;
+
   auto apply_all_fixups() -> void {
     for (auto const &[label, fixups] : label_to_fixups) {
       auto const dest_location = label_to_location.at(label);
@@ -151,6 +155,7 @@ class FunctionBuilder {
   Assembler *assembler;
   Program *program;
   std::vector<Register> saved;
+  bool requires_return;
 
   constexpr auto maybe_insert_rex(std::optional<Register> other_reg = {},
                                   std::optional<Register> rm_reg = {}) -> void {
@@ -241,15 +246,19 @@ class FunctionBuilder {
   }
 
 public:
-  explicit constexpr FunctionBuilder(Assembler *assembler)
-      : assembler{assembler}, program{&assembler->program} {}
+  explicit constexpr FunctionBuilder(Assembler *assembler, bool requires_return)
+      : assembler{assembler}, program{&assembler->program},
+        requires_return{requires_return} {}
 
   ~FunctionBuilder() {
     while (not saved.empty()) {
       insert_pop(saved.back());
       saved.pop_back();
     }
-    program->insert_byte(/*ret*/ 0xc3);
+
+    if (requires_return) {
+      program->insert_byte(/*ret*/ 0xc3);
+    }
     program->insert_padding(16);
   }
 
@@ -476,7 +485,19 @@ constexpr auto Assembler::build_function(Label fn_label, Builder &&fn_builder)
   assert(label_to_location.count(fn_label) == 0);
   label_to_location[fn_label] = program.current_offset();
 
-  FunctionBuilder builder{this};
+  FunctionBuilder builder{this, true};
+  fn_builder(builder);
+}
+
+template <typename Builder>
+constexpr auto Assembler::build_out_of_line_block(Label fn_label,
+                                                  Builder &&fn_builder)
+    -> void {
+  program.insert_padding(16);
+  assert(label_to_location.count(fn_label) == 0);
+  label_to_location[fn_label] = program.current_offset();
+
+  FunctionBuilder builder{this, false};
   fn_builder(builder);
 }
 

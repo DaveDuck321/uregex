@@ -56,7 +56,6 @@ auto get_timestamp() -> uint64_t {
 
   uint64_t seconds = time_out.tv_sec;
   uint64_t nanoseconds = time_out.tv_nsec;
-  std::cout << seconds << ", " << nanoseconds << std::endl;
   return seconds * 1'000'000'000UL + nanoseconds;
 }
 

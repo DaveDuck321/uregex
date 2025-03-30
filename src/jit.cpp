@@ -314,7 +314,10 @@ auto compile_impl(std::unique_ptr<RegexGraphImpl> graph)
     -> std::unique_ptr<RegexCompiledImpl> {
   Assembler assembler;
 
-  // Build the function to be called every iteration of the loop
+  std::map<size_t, Label> state_evaluation_body_labels;
+  std::map<size_t, Label> done_evaluating_state_labels;
+
+  // Build the matching function body
   Label entry_point = assembler.allocate_label();
   assembler.build_function(entry_point, [&](auto &builder) {
     // arg[0] = codepoint
@@ -338,9 +341,10 @@ auto compile_impl(std::unique_ptr<RegexGraphImpl> graph)
                          CallingConvention::argument[3]);
     builder.insert_mov64(next_state_base_reg, CallingConvention::argument[4]);
 
-    builder.insert_mov32(lookahead_buffer, CallingConvention::argument[5]);
+    builder.insert_mov64(lookahead_buffer, CallingConvention::argument[5]);
 
     builder.insert_xor(did_accept_any_state, did_accept_any_state);
+
     for (auto const &[state_index, node] :
          std::views::enumerate(graph->all_nodes)) {
       if (std::holds_alternative<Condition::Entry>(node->condition.type) ||
@@ -348,7 +352,7 @@ auto compile_impl(std::unique_ptr<RegexGraphImpl> graph)
         // No need to codegen anything for the placeholder states
         continue;
       }
-      auto const skip_node_label = builder.allocate_label();
+
       // 1) Is our state active?
       // - Last matching index is stored as the first counter
       builder.insert_load_cmp32(
@@ -356,31 +360,44 @@ auto compile_impl(std::unique_ptr<RegexGraphImpl> graph)
           /*offset=*/StateAtIndex::counter_offset(*graph) +
               sizeof(CounterType) * (graph->counters.size() + 1) * state_index,
           /*compare_to=*/indicies);
-      builder.insert_jump_if_not_zero_flag(skip_node_label);
 
-      // 2) Evaluate our condition
-      // - Load the codepoint from TOS
-      compile_check_condition(builder, *graph, node.get(), skip_node_label);
+      state_evaluation_body_labels[state_index] = builder.allocate_label();
+      done_evaluating_state_labels[state_index] = builder.allocate_label();
 
-      builder.insert_or_imm8(did_accept_any_state, 1);
-
-      // 3) The condition passes
-      for (auto const &edge : node->edges) {
-        compile_edge_transition(builder, *graph, edge, state_index);
-      }
-
-      builder.attach_label(skip_node_label);
+      // 2) Jump to the evaluation body
+      builder.insert_jump_if_zero_flag(
+          state_evaluation_body_labels[state_index]);
+      builder.attach_label(done_evaluating_state_labels[state_index]);
     }
 
     builder.insert_mov32(CallingConvention::ret, did_accept_any_state);
   });
+
+  // Insert the bodies for the out-of-line state evaluation
+  for (auto const &[state_index, label] : state_evaluation_body_labels) {
+    assembler.build_out_of_line_block(label, [&](auto &builder) {
+      auto const *node = graph->all_nodes[state_index].get();
+
+      // 1) Evaluate our condition
+      compile_check_condition(builder, *graph, node,
+                              done_evaluating_state_labels[state_index]);
+
+      // 2) If we're here, the state is active AND the condition passes.
+      builder.insert_or_imm8(did_accept_any_state, 1);
+
+      for (auto const &edge : node->edges) {
+        compile_edge_transition(builder, *graph, edge, state_index);
+      }
+      builder.insert_jump(done_evaluating_state_labels[state_index]);
+    });
+  }
 
   assembler.apply_all_fixups();
 
   auto section = ExecutableSection{assembler.program.data};
   auto entry_point_ptr =
       section.get_fn_ptr<bool, Codepoint, evaluation::IndexType,
-                         evaluation::IndexType, void *, void *, unsigned>(
+                         evaluation::IndexType, void *, void *, size_t>(
           assembler.label_to_location[entry_point]);
   return std::make_unique<RegexCompiledImpl>(
       std::move(graph), std::move(section), entry_point_ptr);

@@ -69,8 +69,7 @@ public:
 
 struct RegexCompiledImpl {
   using EntryPointFn = bool (*)(Codepoint, evaluation::IndexType,
-                                evaluation::IndexType, void *, void *,
-                                unsigned);
+                                evaluation::IndexType, void *, void *, size_t);
   std::unique_ptr<RegexGraphImpl> m_graph;
   jit::ExecutableSection m_executable;
   EntryPointFn m_entrypoint;

@@ -315,7 +315,13 @@ auto compile_impl(std::unique_ptr<RegexGraphImpl> graph)
   Assembler assembler;
 
   std::map<size_t, Label> state_evaluation_body_labels;
-  std::map<size_t, Label> done_evaluating_state_labels;
+
+  std::vector<Label> state_start_labels;
+  for (size_t state_id = 0; state_id < graph->all_nodes.size(); state_id += 1) {
+    state_start_labels.push_back(assembler.allocate_label());
+  }
+  // Allocate a final index for the last state
+  state_start_labels.push_back(assembler.allocate_label());
 
   // Build the matching function body
   Label entry_point = assembler.allocate_label();
@@ -347,6 +353,7 @@ auto compile_impl(std::unique_ptr<RegexGraphImpl> graph)
 
     for (auto const &[state_index, node] :
          std::views::enumerate(graph->all_nodes)) {
+      builder.attach_label(state_start_labels[state_index]);
       if (std::holds_alternative<Condition::Entry>(node->condition.type) ||
           std::holds_alternative<Condition::Match>(node->condition.type)) {
         // No need to codegen anything for the placeholder states
@@ -362,14 +369,13 @@ auto compile_impl(std::unique_ptr<RegexGraphImpl> graph)
           /*compare_to=*/indicies);
 
       state_evaluation_body_labels[state_index] = builder.allocate_label();
-      done_evaluating_state_labels[state_index] = builder.allocate_label();
 
       // 2) Jump to the evaluation body
       builder.insert_jump_if_zero_flag(
           state_evaluation_body_labels[state_index]);
-      builder.attach_label(done_evaluating_state_labels[state_index]);
     }
 
+    builder.attach_label(state_start_labels[graph->all_nodes.size()]);
     builder.insert_mov32(CallingConvention::ret, did_accept_any_state);
   });
 
@@ -380,7 +386,7 @@ auto compile_impl(std::unique_ptr<RegexGraphImpl> graph)
 
       // 1) Evaluate our condition
       compile_check_condition(builder, *graph, node,
-                              done_evaluating_state_labels[state_index]);
+                              state_start_labels[state_index + 1]);
 
       // 2) If we're here, the state is active AND the condition passes.
       builder.insert_or_imm8(did_accept_any_state, 1);
@@ -388,7 +394,16 @@ auto compile_impl(std::unique_ptr<RegexGraphImpl> graph)
       for (auto const &edge : node->edges) {
         compile_edge_transition(builder, *graph, edge, state_index);
       }
-      builder.insert_jump(done_evaluating_state_labels[state_index]);
+
+      // 3) Jump back to the main dispatch block
+      size_t next_state_index = state_index + 1;
+      while (
+          next_state_index != graph->all_nodes.size() &&
+          are_mutually_exclusive(
+              node->condition, graph->all_nodes[next_state_index]->condition)) {
+        next_state_index += 1;
+      }
+      builder.insert_jump(state_start_labels[next_state_index]);
     });
   }
 

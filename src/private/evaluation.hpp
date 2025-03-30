@@ -184,6 +184,32 @@ constexpr auto evaluate_condition(Codepoint codepoint,
   return expression.is_complement;
 }
 
+constexpr auto are_mutually_exclusive(Condition condition1,
+                                      Condition condition2) -> bool {
+
+  if (std::holds_alternative<Condition::Match>(condition1.type) ||
+      std::holds_alternative<Condition::Entry>(condition1.type) ||
+      std::holds_alternative<Condition::Match>(condition2.type) ||
+      std::holds_alternative<Condition::Entry>(condition2.type)) {
+    // Placeholder states are never even evaluated
+    return true;
+  }
+
+  if (std::holds_alternative<Codepoint>(condition2.type)) {
+    std::swap(condition1, condition1);
+  }
+
+  if (std::holds_alternative<Codepoint>(condition1.type)) {
+    return !std::visit(
+        [&](auto c2) {
+          return evaluate_condition(std::get<Codepoint>(condition1.type), c2);
+        },
+        condition2.type);
+  }
+
+  return false;
+}
+
 struct EvaluationState {
   uint8_t *m_storage;
 

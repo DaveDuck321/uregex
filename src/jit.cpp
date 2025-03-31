@@ -1,5 +1,6 @@
 #include "regex/regex.hpp"
 
+#include "private/character_categories.hpp"
 #include "private/assembler.hpp"
 #include "private/evaluation.hpp"
 #include "private/jit.hpp"
@@ -241,74 +242,124 @@ auto compile_edge_transition(FunctionBuilder &builder,
   builder.attach_label(abandon_transition);
 }
 
-auto compile_check_condition(FunctionBuilder &builder,
-                             RegexGraphImpl const &graph, Node const *node,
-                             Label skip_node_label) -> void {
-  auto const &condition = node->condition;
-  // Special cases
-  if (std::holds_alternative<category::Any>(condition.type)) {
-    return; // We always match
+struct CheckCondition {
+  FunctionBuilder *builder;
+  RegexGraphImpl const *graph;
+  Node const *node;
+
+  auto operator()(category::Any const &, Label target, bool jump_on_pass)
+      -> void {
+    if (jump_on_pass) {
+      // We always pass (and therefore never fallthrough)
+      builder->insert_jump(target);
+    }
   }
 
-  if (std::holds_alternative<Codepoint>(condition.type)) {
+  auto operator()(Codepoint const &condition, Label target, bool jump_on_pass)
+      -> void {
     // Long strings are a very common case where the NFA does poorly
     // Cheat by evaluating as many characters as possible simultaneously, this
     // will avoid spurious node activations later in the chain.
     std::string character_chain;
     std::vector<size_t> cumulative_length;
+
+    codepoint_to_utf8(character_chain, condition);
+    cumulative_length.push_back(character_chain.size());
+
     auto *next_node = node;
-    do {
+    while (next_node->edges.size() == 1) {
+      next_node = graph->all_nodes[next_node->edges[0].output_index].get();
+      if (not std::holds_alternative<Codepoint>(next_node->condition.type)) {
+        break;
+      }
+
       codepoint_to_utf8(character_chain,
                         std::get<Codepoint>(next_node->condition.type));
       cumulative_length.push_back(character_chain.size());
-      if (next_node->edges.size() != 1) {
-        break;
-      }
-      next_node = graph.all_nodes[next_node->edges[0].output_index].get();
-    } while (std::holds_alternative<Codepoint>(next_node->condition.type));
+    }
 
     auto const minimum_required_compare_size = cumulative_length[0];
 
-    if (character_chain.size() >= sizeof(uint32_t)) {
+    if (character_chain.size() >= sizeof(uint32_t) && !jump_on_pass) {
       // Multi-character (or single utf-8 string compare)
       uint32_t compare_imm = 0;
       ::memcpy(&compare_imm, character_chain.data(), sizeof(uint32_t));
-      builder.insert_cmp_r32_imm32(lookahead_buffer, compare_imm);
-      builder.insert_jump_if_not_zero_flag(skip_node_label);
-      return;
-    }
-
-    if (minimum_required_compare_size == sizeof(uint8_t)) {
+      builder->insert_cmp_r32_imm32(lookahead_buffer, compare_imm);
+    } else if (minimum_required_compare_size == sizeof(uint8_t)) {
       // ASCII compare
       uint8_t compare_imm = 0;
       ::memcpy(&compare_imm, character_chain.data(), sizeof(uint8_t));
-      builder.insert_cmp_r8_imm8(lookahead_buffer, compare_imm);
-      builder.insert_jump_if_not_zero_flag(skip_node_label);
+      builder->insert_cmp_r8_imm8(lookahead_buffer, compare_imm);
+    } else {
+      // Slowpath utf-8 compare
+      builder->insert_cmp_r32_imm32(codepoint, condition.value);
+    }
+
+    if (jump_on_pass) {
+      builder->insert_jump_if_zero_flag(target);
+    } else {
+      builder->insert_jump_if_not_zero_flag(target);
+    }
+  }
+
+  auto operator()(Condition::CustomExpression const &custom_expression,
+                  Label target_if_failed, bool jump_on_pass) -> void {
+    assert(not jump_on_pass);
+    if (custom_expression.is_complement) {
+      // [^ab] fails if either a or b passes
+      for (auto const &part : custom_expression.expressions) {
+        std::visit(
+            [&](auto const &condition) {
+              return (*this)(condition, target_if_failed,
+                             /*jump_on_pass=*/true);
+            },
+            part);
+      }
       return;
     }
 
-    // Slowpath utf-8 compare
-    builder.insert_cmp_r32_imm32(codepoint,
-                                 std::get<Codepoint>(condition.type).value);
-    builder.insert_jump_if_not_zero_flag(skip_node_label);
-    return;
+    // [ab] passes if either a or b passes
+    auto pass_target = builder->allocate_label();
+    for (auto const &[index, part] :
+         std::views::enumerate(custom_expression.expressions)) {
+      std::visit(
+          [&](auto const &condition) {
+            if ((size_t)index + 1 == custom_expression.expressions.size()) {
+              // We're the last expression, we should fallthrough like a normal
+              // condition
+              return (*this)(condition, target_if_failed,
+                             /*jump_on_pass=*/false);
+            } else {
+              return (*this)(condition, pass_target,
+                             /*jump_on_pass=*/true);
+            }
+          },
+          part);
+    }
+    builder->attach_label(pass_target);
   }
 
-  // Fallback to c++ implementation
-  builder.insert_push(current_index);
-  builder.insert_mov32(CallingConvention::argument[0], codepoint);
-  std::visit(
-      [&]<typename Condition>(Condition const &condition) {
-        builder.insert_load_imm64(CallingConvention::argument[1],
-                                  (uint64_t)&condition);
-        builder.insert_call(static_cast<bool (*)(Codepoint, Condition const &)>(
-            &evaluation::evaluate_condition));
-      },
-      condition.type);
-  // We've just clobbered the current_index... Rematerialize
-  builder.insert_pop(current_index);
-  builder.insert_jump_if_bool_false(CallingConvention::ret, skip_node_label);
-}
+  template <typename Condition>
+  auto operator()(Condition const &condition, Label target, bool jump_on_pass)
+      -> void {
+    // Fallback to c++ implementation
+    builder->insert_push(current_index);
+    builder->insert_mov32(CallingConvention::argument[0], codepoint);
+
+    builder->insert_load_imm64(CallingConvention::argument[1],
+                               (uint64_t)&condition);
+    builder->insert_call(static_cast<bool (*)(Codepoint, Condition const &)>(
+        &evaluation::evaluate_condition));
+
+    // We've just clobbered the current_index... Rematerialize
+    builder->insert_pop(current_index);
+    if (jump_on_pass) {
+      builder->insert_jump_if_bool_true(CallingConvention::ret, target);
+    } else {
+      builder->insert_jump_if_bool_false(CallingConvention::ret, target);
+    }
+  }
+};
 
 auto compile_impl(std::unique_ptr<RegexGraphImpl> graph)
     -> std::unique_ptr<RegexCompiledImpl> {
@@ -385,8 +436,13 @@ auto compile_impl(std::unique_ptr<RegexGraphImpl> graph)
       auto const *node = graph->all_nodes[state_index].get();
 
       // 1) Evaluate our condition
-      compile_check_condition(builder, *graph, node,
-                              state_start_labels[state_index + 1]);
+      CheckCondition condition_overloads{&builder, graph.get(), node};
+      std::visit(
+          [&](auto const &condition) {
+            condition_overloads(condition, state_start_labels[state_index + 1],
+                                /*jump_on_pass=*/false);
+          },
+          node->condition.type);
 
       // 2) If we're here, the state is active AND the condition passes.
       builder.insert_or_imm8(did_accept_any_state, 1);

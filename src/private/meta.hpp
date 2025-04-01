@@ -31,6 +31,15 @@ template <template <typename> typename TemplateFn,
 struct Apply<TemplateFn, ListTemplate<ListItem...>> {
   using type = TypeList<TemplateFn<ListItem>...>;
 };
+
+template <typename ToTest> struct EmptyDetector : ToTest {
+  using Member = char;
+  Member _;
+
+  static constexpr auto is_empty() -> bool {
+    return sizeof(EmptyDetector) == sizeof(Member);
+  }
+};
 } // namespace impl
 
 template <template <typename...> typename TargetTemplate, typename ListType>
@@ -41,4 +50,7 @@ using concat = impl::Concat<ListType1, ListType2>::type;
 
 template <template <typename> typename TemplateFn, typename ListType>
 using apply = impl::Apply<TemplateFn, ListType>::type;
+
+template <typename T>
+static constexpr auto is_empty = impl::EmptyDetector<T>::is_empty();
 } // namespace uregex::meta

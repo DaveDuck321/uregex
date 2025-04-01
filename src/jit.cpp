@@ -1,7 +1,7 @@
 #include "regex/regex.hpp"
 
-#include "private/character_categories.hpp"
 #include "private/assembler.hpp"
+#include "private/character_categories.hpp"
 #include "private/evaluation.hpp"
 #include "private/jit.hpp"
 #include "private/nfa.hpp"
@@ -346,12 +346,14 @@ struct CheckCondition {
     builder->insert_push(current_index);
     builder->insert_mov32(CallingConvention::argument[0], codepoint);
 
-    builder->insert_load_imm64(CallingConvention::argument[1],
-                               (uint64_t)&condition);
+    if (not meta::is_empty<Condition>) {
+      builder->insert_load_imm64(CallingConvention::argument[1],
+                                 (uint64_t)&condition);
+    }
     builder->insert_call(static_cast<bool (*)(Codepoint, Condition const &)>(
         &evaluation::evaluate_condition));
 
-    // We've just clobbered the current_index... Rematerialize
+    // c++ might have clobbered current_index
     builder->insert_pop(current_index);
     if (jump_on_pass) {
       builder->insert_jump_if_bool_true(CallingConvention::ret, target);

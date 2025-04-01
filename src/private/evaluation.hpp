@@ -170,7 +170,6 @@ evaluate_condition(Codepoint codepoint,
 constexpr auto evaluate_condition(Codepoint codepoint,
                                   Condition::CustomExpression const &expression)
     -> bool {
-  // std::println(std::cout, "here");
   for (auto const &item : expression.expressions) {
     auto result = std::visit(
         [&](auto const &condition) {

@@ -35,7 +35,7 @@ TEST_OBJECTS = $(patsubst test/%.cpp, $(BUILD_DIR)/%.O0.o, $(TEST_SOURCES))
 TEST_DEP_INCLUDES = $(patsubst $(BUILD_DIR)/%.o, $(BUILD_DIR)/%.d, $(TEST_OBJECTS))
 
 .PHONY: default
-default: regex-jit $(BUILD_DIR)/test.out $(BUILD_DIR)/libregex.O0.a $(BUILD_DIR)/libregex.O3.a
+default: regex-jit regex-jit-O3 $(BUILD_DIR)/test.out $(BUILD_DIR)/libregex.O0.a $(BUILD_DIR)/libregex.O3.a
 
 $(BUILD_DIR):
 	mkdir -p $(BUILD_DIR)
@@ -76,6 +76,9 @@ $(BUILD_DIR)/test.out: $(TEST_OBJECTS) $(BUILD_DIR)/libregex.O0.a | $(BUILD_DIR)
 
 regex-jit: regex-jit.cpp $(BUILD_DIR)/libregex.O0.a $(wildcard include/regex/*.hpp)
 	$(CXX) $(CXX_FLAGS) $(DEBUG_CXX_FLAGS) $< $(BUILD_DIR)/libregex.O0.a -o $@
+
+regex-jit-O3: regex-jit.cpp $(BUILD_DIR)/libregex.O3.a $(wildcard include/regex/*.hpp)
+	$(CXX) $(CXX_FLAGS) $(RELEASE_CXX_FLAGS) $< $(BUILD_DIR)/libregex.O3.a -o $@
 
 .PHONY: clean
 clean:

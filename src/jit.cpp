@@ -13,6 +13,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <functional>
+#include <map>
 #include <memory>
 #include <ranges>
 #include <string.h>
@@ -477,11 +478,11 @@ auto compile_impl(std::unique_ptr<RegexGraphImpl> graph)
 
   assembler.apply_all_fixups();
 
-  auto section = ExecutableSection{assembler.program.data};
+  auto section = ExecutableSection{assembler.m_program.data};
   auto entry_point_ptr =
       section.get_fn_ptr<bool, Codepoint, evaluation::IndexType,
                          evaluation::IndexType, void *, void *, size_t>(
-          assembler.label_to_location[entry_point]);
+          assembler.m_labels[+entry_point].location);
   return std::make_unique<RegexCompiledImpl>(
       std::move(graph), std::move(section), entry_point_ptr);
 }

@@ -4,8 +4,8 @@
 
 #include <array>
 #include <cassert>
+#include <cstddef>
 #include <cstdint>
-#include <map>
 #include <optional>
 #include <span>
 #include <sys/mman.h>
@@ -58,9 +58,7 @@ struct Label {
   enum class LabelId : size_t {};
   LabelId id;
 
-  auto operator<(Label const &other) const -> bool {
-    return std::to_underlying(id) < std::to_underlying(other.id);
-  }
+  auto operator+() -> size_t { return std::to_underlying(id); };
 };
 
 struct Fixup {
@@ -101,16 +99,23 @@ struct Program {
   constexpr auto current_offset() -> IndexInProgram { return data.size(); }
 };
 
-struct Assembler {
-  Program program;
+struct LabelAllocation {
+  static constexpr auto unassigned_location = ~0L;
 
-  std::map<Label, std::vector<Fixup>> label_to_fixups;
-  std::map<Label, IndexInProgram> label_to_location;
-  std::vector<Label> labels;
+  Label label;
+  IndexInProgram location = unassigned_location;
+  std::vector<Fixup> fixups = {};
+
+  explicit constexpr LabelAllocation(Label label) : label{label} {}
+};
+
+struct Assembler {
+  Program m_program;
+  std::vector<LabelAllocation> m_labels;
 
   constexpr auto allocate_label() -> Label {
-    auto const label = Label{Label::LabelId{labels.size()}};
-    labels.push_back(label);
+    auto const label = Label{Label::LabelId{m_labels.size()}};
+    m_labels.emplace_back(label);
     return label;
   }
 
@@ -121,33 +126,45 @@ struct Assembler {
   constexpr auto build_out_of_line_block(Label fn_label, Builder &&fn_builder)
       -> void;
 
+  constexpr auto attach_label(Label label) -> void {
+    auto &allocation = m_labels[+label];
+    assert(allocation.location == LabelAllocation::unassigned_location);
+    allocation.location = m_program.current_offset();
+  }
+
   auto apply_all_fixups() -> void {
-    for (auto const &[label, fixups] : label_to_fixups) {
-      auto const dest_location = label_to_location.at(label);
-      for (auto fixup : fixups) {
+    for (auto &label_allocation : m_labels) {
+      if (label_allocation.fixups.empty()) {
+        continue; // Allow allocation of unused labels
+      }
+
+      assert(label_allocation.location != LabelAllocation::unassigned_location);
+      auto const dest_location = label_allocation.location;
+
+      for (auto fixup : label_allocation.fixups) {
         switch (fixup.type) {
         case Fixup::Type::relative_4_bytes: {
           int32_t const offset = dest_location - (fixup.location + 4);
           auto to_write = std::bit_cast<std::array<uint8_t, 4>>(offset);
-          assert(program.data[fixup.location] == 0 &&
-                 program.data[fixup.location + 1] == 0 &&
-                 program.data[fixup.location + 2] == 0 &&
-                 program.data[fixup.location + 3] == 0);
+          assert(m_program.data[fixup.location] == 0 &&
+                 m_program.data[fixup.location + 1] == 0 &&
+                 m_program.data[fixup.location + 2] == 0 &&
+                 m_program.data[fixup.location + 3] == 0);
 
-          program.data[fixup.location] = to_write[0];
-          program.data[fixup.location + 1] = to_write[1];
-          program.data[fixup.location + 2] = to_write[2];
-          program.data[fixup.location + 3] = to_write[3];
+          m_program.data[fixup.location] = to_write[0];
+          m_program.data[fixup.location + 1] = to_write[1];
+          m_program.data[fixup.location + 2] = to_write[2];
+          m_program.data[fixup.location + 3] = to_write[3];
           break;
         }
         }
       }
+      label_allocation.fixups.clear();
     }
-    label_to_fixups.clear();
   }
 
   auto load() -> jit::ExecutableSection {
-    return jit::ExecutableSection{program.data};
+    return jit::ExecutableSection{m_program.data};
   }
 };
 
@@ -239,7 +256,7 @@ class FunctionBuilder {
 
   constexpr auto insert_reference_to_label(Label label, Fixup::Type type)
       -> void {
-    assembler->label_to_fixups[label].push_back(
+    assembler->m_labels[+label].fixups.push_back(
         {program->current_offset(), type});
 
     switch (type) {
@@ -251,7 +268,7 @@ class FunctionBuilder {
 
 public:
   explicit constexpr FunctionBuilder(Assembler *assembler, bool requires_return)
-      : assembler{assembler}, program{&assembler->program},
+      : assembler{assembler}, program{&assembler->m_program},
         requires_return{requires_return} {}
 
   ~FunctionBuilder() {
@@ -276,8 +293,7 @@ public:
   }
 
   constexpr auto attach_label(Label label) -> void {
-    assert(assembler->label_to_location.count(label) == 0);
-    assembler->label_to_location[label] = program->current_offset();
+    assembler->attach_label(label);
   }
 
   constexpr auto insert_load_imm32(Register reg, uint32_t imm) -> void {
@@ -503,9 +519,8 @@ public:
 template <typename Builder>
 constexpr auto Assembler::build_function(Label fn_label, Builder &&fn_builder)
     -> void {
-  program.insert_padding(16);
-  assert(label_to_location.count(fn_label) == 0);
-  label_to_location[fn_label] = program.current_offset();
+  m_program.insert_padding(16);
+  attach_label(fn_label);
 
   FunctionBuilder builder{this, true};
   fn_builder(builder);
@@ -515,9 +530,8 @@ template <typename Builder>
 constexpr auto Assembler::build_out_of_line_block(Label fn_label,
                                                   Builder &&fn_builder)
     -> void {
-  program.insert_padding(16);
-  assert(label_to_location.count(fn_label) == 0);
-  label_to_location[fn_label] = program.current_offset();
+  m_program.insert_padding(16);
+  attach_label(fn_label);
 
   FunctionBuilder builder{this, false};
   fn_builder(builder);

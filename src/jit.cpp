@@ -1,3 +1,4 @@
+#include "private/graph_analyser.hpp"
 #include "regex/regex.hpp"
 
 #include "private/assembler.hpp"
@@ -36,8 +37,9 @@ constexpr auto lookahead_buffer = CallingConvention::callee_saved[5];
 constexpr auto current_index = CallingConvention::temporary[1];
 
 auto compile_commit_new_state(
-    FunctionBuilder &builder, RegexGraphImpl const &graph, Edge const &edge,
-    size_t current_state, std::vector<Label> const &commit_from_counter_labels,
+    FunctionBuilder &builder, GraphAnalyzer const &analyser,
+    RegexGraphImpl const &graph, Edge const &edge, size_t current_state,
+    std::vector<Label> const &commit_from_counter_labels,
     bool is_always_accepted) -> void {
   static constexpr auto computed_counter_value =
       CallingConvention::temporary[0];
@@ -50,9 +52,13 @@ auto compile_commit_new_state(
                                  edge.output_index,
                          /*src=*/current_index);
 
+  auto const &non_zero_counters =
+      analyser.get_non_zero_counters(edge.output_index);
+  auto const &maybe_set_groups =
+      analyser.get_maybe_set_groups(edge.output_index);
+
   // - Commit each counter
-  for (size_t counter_index = 0; counter_index < graph.counters.size();
-       counter_index += 1) {
+  for (size_t counter_index : non_zero_counters) {
     size_t const current_state_counter_offset =
         StateAtIndex::counter_offset(graph) +
         sizeof(CounterType) *
@@ -99,8 +105,7 @@ auto compile_commit_new_state(
   // 2) Commit new groups
   static constexpr auto tmp_group = CallingConvention::temporary[0];
 
-  for (size_t group_index = 0; group_index < graph.number_of_groups;
-       group_index += 1) {
+  for (size_t group_index : maybe_set_groups) {
     size_t const current_state_group_offset =
         StateAtIndex::group_offset(graph) +
         sizeof(Group) * (graph.number_of_groups * current_state + group_index);
@@ -151,6 +156,7 @@ auto compile_commit_new_state(
 }
 
 auto compile_edge_transition(FunctionBuilder &builder,
+                             GraphAnalyzer const &analyser,
                              RegexGraphImpl const &graph, Edge const &edge,
                              size_t current_state) -> void {
   static constexpr auto computed_counter_value =
@@ -168,7 +174,7 @@ auto compile_edge_transition(FunctionBuilder &builder,
   // Special case: we can skip all the counter compares if we know that there's
   // only one incoming edge (we have already checked the actual node condition).
   if (graph.all_nodes[edge.output_index]->incoming_edges == 1) {
-    compile_commit_new_state(builder, graph, edge, current_state,
+    compile_commit_new_state(builder, analyser, graph, edge, current_state,
                              commit_from_counter_labels, true);
     return;
   }
@@ -185,11 +191,12 @@ auto compile_edge_transition(FunctionBuilder &builder,
       /*compare_to=*/current_index);
   builder.insert_jump_if_not_zero_flag(commit_new_state);
 
-  // Now we need to consider the remaining counters one at a time
-  for (auto const &[counter_index, counter_type] :
-       std::views::enumerate(graph.counters)) {
-    bool is_incremented = edge.counters.contains(counter_index);
+  auto const &non_zero_counters =
+      analyser.get_non_zero_counters(edge.output_index);
 
+  // Now we need to consider the remaining counters one at a time
+  for (size_t counter_index : non_zero_counters) {
+    auto counter_type = graph.counters[counter_index];
     size_t const current_state_counter_offset =
         StateAtIndex::counter_offset(graph) +
         sizeof(CounterType) *
@@ -204,6 +211,7 @@ auto compile_edge_transition(FunctionBuilder &builder,
     builder.insert_load32(computed_counter_value, current_state_base_reg,
                           current_state_counter_offset);
 
+    bool is_incremented = edge.counters.contains(counter_index);
     if (is_incremented) {
       builder.insert_add(computed_counter_value, 1);
     }
@@ -236,7 +244,7 @@ auto compile_edge_transition(FunctionBuilder &builder,
   // We've failed to accept this transition, we might as well abandon it
   builder.insert_jump(abandon_transition);
   builder.attach_label(commit_new_state);
-  compile_commit_new_state(builder, graph, edge, current_state,
+  compile_commit_new_state(builder, analyser, graph, edge, current_state,
                            commit_from_counter_labels, false);
 
   builder.attach_label(abandon_transition);
@@ -367,6 +375,8 @@ auto compile_impl(std::unique_ptr<RegexGraphImpl> graph)
     -> std::unique_ptr<RegexCompiledImpl> {
   Assembler assembler;
 
+  GraphAnalyzer analyser{*graph};
+
   std::map<size_t, Label> state_evaluation_body_labels;
 
   std::vector<Label> state_start_labels;
@@ -450,7 +460,7 @@ auto compile_impl(std::unique_ptr<RegexGraphImpl> graph)
       builder.insert_or_imm8(did_accept_any_state, 1);
 
       for (auto const &edge : node->edges) {
-        compile_edge_transition(builder, *graph, edge, state_index);
+        compile_edge_transition(builder, analyser, *graph, edge, state_index);
       }
 
       // 3) Jump back to the main dispatch block

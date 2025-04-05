@@ -467,13 +467,13 @@ public:
 
   constexpr auto insert_jump_if_bool_false(Register reg, Label target_if_false)
       -> void {
-    insert_test_imm8(reg, 1);
+    insert_test(reg, reg);
     insert_jump_if_zero_flag(target_if_false);
   }
 
   constexpr auto insert_jump_if_bool_true(Register reg, Label target_if_true)
       -> void {
-    insert_test_imm8(reg, 1);
+    insert_test(reg, reg);
     insert_jump_if_not_zero_flag(target_if_true);
   }
 

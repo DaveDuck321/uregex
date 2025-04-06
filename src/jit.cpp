@@ -16,6 +16,7 @@
 #include <map>
 #include <memory>
 #include <ranges>
+#include <set>
 #include <string.h>
 #include <variant>
 
@@ -173,6 +174,7 @@ auto compile_commit_new_state(
 auto compile_edge_transition(FunctionBuilder &builder,
                              GraphAnalyzer const &analyser,
                              RegexGraphImpl const &graph, Edge const &edge,
+                             std::set<size_t> &has_first_transition_to_state,
                              size_t current_state) -> void {
   static constexpr auto computed_counter_value =
       CallingConvention::temporary[0];
@@ -186,9 +188,11 @@ auto compile_edge_transition(FunctionBuilder &builder,
     commit_from_counter_labels.push_back(builder.allocate_label());
   }
 
-  // Special case: we can skip all the counter compares if we know that there's
-  // only one incoming edge (we have already checked the actual node condition).
-  if (graph.all_nodes[edge.output_index]->incoming_edges == 1) {
+  // Special case: we know the `current_index` check will always pass if we're
+  // the first transition into this node. In this case, don't bother with the
+  // codegen of any counter compares.
+  if (has_first_transition_to_state.count(edge.output_index) == 0) {
+    has_first_transition_to_state.insert(edge.output_index);
     compile_commit_new_state(builder, analyser, graph, edge, current_state,
                              commit_from_counter_labels, true);
     return;
@@ -392,6 +396,7 @@ auto compile_impl(std::unique_ptr<RegexGraphImpl> graph)
 
   GraphAnalyzer analyser{*graph};
 
+  std::set<size_t> has_first_transition_to_state;
   std::map<size_t, Label> state_evaluation_body_labels;
 
   std::vector<Label> state_start_labels;
@@ -475,7 +480,8 @@ auto compile_impl(std::unique_ptr<RegexGraphImpl> graph)
       builder.insert_or_imm8(did_accept_any_state, 1);
 
       for (auto const &edge : node->edges) {
-        compile_edge_transition(builder, analyser, *graph, edge, state_index);
+        compile_edge_transition(builder, analyser, *graph, edge,
+                                has_first_transition_to_state, state_index);
       }
 
       // 3) Jump back to the main dispatch block

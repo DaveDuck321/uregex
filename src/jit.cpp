@@ -30,13 +30,13 @@ namespace {
 constexpr auto current_state_base_reg = CallingConvention::callee_saved[0];
 constexpr auto next_state_base_reg = CallingConvention::callee_saved[1];
 
-constexpr auto indicies = CallingConvention::callee_saved[2];
+constexpr auto current_index = CallingConvention::callee_saved[2];
 constexpr auto codepoint = CallingConvention::callee_saved[3];
 
 constexpr auto did_accept_any_state = CallingConvention::callee_saved[4];
 constexpr auto lookahead_buffer = CallingConvention::callee_saved[5];
 
-constexpr auto current_index = CallingConvention::temporary[1];
+constexpr auto last_index = CallingConvention::temporary[1];
 
 auto compile_commit_new_state(
     FunctionBuilder &builder, GraphAnalyzer const &analyser,
@@ -370,7 +370,7 @@ struct CheckCondition {
   auto operator()(Condition const &condition, Label target, bool jump_on_pass)
       -> void {
     // Fallback to c++ implementation
-    builder->insert_push(current_index);
+    builder->insert_push(last_index);
     builder->insert_mov32(CallingConvention::argument[0], codepoint);
 
     if (not meta::is_empty<Condition>) {
@@ -381,7 +381,7 @@ struct CheckCondition {
         &evaluation::evaluate_condition));
 
     // c++ might have clobbered current_index
-    builder->insert_pop(current_index);
+    builder->insert_pop(last_index);
     if (jump_on_pass) {
       builder->insert_jump_if_bool_true(CallingConvention::ret, target);
     } else {
@@ -423,8 +423,8 @@ auto compile_impl(std::unique_ptr<RegexGraphImpl> graph)
 
     builder.insert_mov32(codepoint, CallingConvention::argument[0]);
 
+    builder.insert_mov32(last_index, CallingConvention::argument[1]);
     builder.insert_mov32(current_index, CallingConvention::argument[2]);
-    builder.insert_mov32(indicies, CallingConvention::argument[1]);
 
     builder.insert_mov64(current_state_base_reg,
                          CallingConvention::argument[3]);
@@ -449,7 +449,7 @@ auto compile_impl(std::unique_ptr<RegexGraphImpl> graph)
           current_state_base_reg,
           /*offset=*/StateAtIndex::counter_offset(*graph) +
               sizeof(CounterType) * (graph->counters.size() + 1) * state_index,
-          /*compare_to=*/indicies);
+          /*compare_to=*/last_index);
 
       state_evaluation_body_labels[state_index] = builder.allocate_label();
 

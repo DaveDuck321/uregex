@@ -74,6 +74,20 @@ auto compile_commit_new_state(
     bool is_next_incremented = edge.counters.contains(counter_index + 1);
     bool is_final = counter_index + 1 == graph.counters.size();
 
+    if (not analyser.get_non_zero_counters(current_state)
+                .contains(counter_index)) {
+      builder.attach_label(commit_from_counter_labels[counter_index]);
+      if (is_incremented) {
+        builder.insert_store_imm32(next_state_base_reg,
+                                   next_state_counter_offset, 1);
+      } else {
+        builder.insert_xor(computed_counter_value, computed_counter_value);
+        builder.insert_store32(next_state_base_reg, next_state_counter_offset,
+                               computed_counter_value);
+      }
+      continue;
+    }
+
     if (!is_incremented && !is_next_incremented && is_always_accepted &&
         !is_final) {
       // Special case: we're not touching the counters and we're always accepted

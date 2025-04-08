@@ -307,7 +307,13 @@ struct CheckCondition {
 
     auto const minimum_required_compare_size = cumulative_length[0];
 
-    if (character_chain.size() >= sizeof(uint32_t) && !jump_on_pass) {
+    if (character_chain.size() >= sizeof(uint64_t) && !jump_on_pass) {
+      // Multi-character
+      uint64_t compare_imm = 0;
+      ::memcpy(&compare_imm, character_chain.data(), sizeof(uint64_t));
+      builder->insert_load_imm64(CallingConvention::temporary[0], compare_imm);
+      builder->insert_cmp64(lookahead_buffer, CallingConvention::temporary[0]);
+    } else if (character_chain.size() >= sizeof(uint32_t) && !jump_on_pass) {
       // Multi-character (or single utf-8 string compare)
       uint32_t compare_imm = 0;
       ::memcpy(&compare_imm, character_chain.data(), sizeof(uint32_t));

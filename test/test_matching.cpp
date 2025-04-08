@@ -91,3 +91,23 @@ TEST_CASE(either, "[regex][matching]") {
   CHECK(!does_match(R"((a|b)*(c|d)?(f|h)+)", ""));
   CHECK(!does_match(R"((a|b)*(c|d)?(f|h)+)", "ad"));
 }
+
+TEST_CASE(simple_string, "[regex][matching]") {
+  // This is worth testing because the jit will try very hard to short-circuit
+  // these compares so quite a lot can go wrong here.
+  CHECK(does_match("aaa", "aaa"));
+  CHECK(!does_match("aaa", "aaaa"));
+  CHECK(!does_match("aaa", "aab"));
+
+  CHECK(does_match("aaaa", "aaaa"));
+  CHECK(!does_match("aaaa", "aaaaa"));
+  CHECK(!does_match("aaaa", "aaab"));
+
+  CHECK(does_match("aaaaaaaa", "aaaaaaaa"));
+  CHECK(!does_match("aaaaaaaa", "aaaaaaaaa"));
+  CHECK(!does_match("aaaaaaaa", "aaaaaaab"));
+
+  CHECK(does_match("aaaaaaaaa", "aaaaaaaaa"));
+  CHECK(!does_match("aaaaaaaaa", "aaaaaaaaaa"));
+  CHECK(!does_match("aaaaaaaaa", "aaaaaaaab"));
+}

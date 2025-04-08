@@ -396,6 +396,12 @@ public:
     program->insert_immediate(compare_to);
   }
 
+  constexpr auto insert_cmp64(Register r1, Register r2) -> void {
+    insert_rex(/*is_operand=*/true, r1, r2);
+    program->insert_byte(0x39);
+    insert_modrm(r2, /*mod=*/0b11, r1);
+  }
+
   constexpr auto insert_set_if_zero(Register dst) -> void {
     insert_rex(/*is_operand=*/false, dst);
     program->insert_byte(0x0F);
@@ -430,9 +436,29 @@ public:
     program->insert_immediate(compare_to);
   }
 
-  constexpr auto insert_test(Register r1, Register r2) -> void {
+  constexpr auto insert_test_r32_imm32(Register reg, uint32_t compare_to)
+      -> void {
+    maybe_insert_rex(reg);
+    program->insert_byte(0xF7);
+    insert_modrm(0, /*mod=*/0b11, reg);
+    program->insert_immediate(compare_to);
+  }
+
+  constexpr auto insert_test8(Register r1, Register r2) -> void {
     maybe_insert_rex(r1, r2, /*is_u8=*/true);
     program->insert_byte(0x84);
+    insert_modrm(r2, /*mod=*/0b11, r1);
+  }
+
+  constexpr auto insert_test64(Register r1, Register r2) -> void {
+    insert_rex(/*is_operand=*/true, r1, r2);
+    program->insert_byte(0x85);
+    insert_modrm(r2, /*mod=*/0b11, r1);
+  }
+
+  constexpr auto insert_cmp8(Register r1, Register r2) -> void {
+    maybe_insert_rex(r1, r2, /*is_u8=*/true);
+    program->insert_byte(0x38);
     insert_modrm(r2, /*mod=*/0b11, r1);
   }
 
@@ -483,13 +509,13 @@ public:
 
   constexpr auto insert_jump_if_bool_false(Register reg, Label target_if_false)
       -> void {
-    insert_test(reg, reg);
+    insert_test8(reg, reg);
     insert_jump_if_zero_flag(target_if_false);
   }
 
   constexpr auto insert_jump_if_bool_true(Register reg, Label target_if_true)
       -> void {
-    insert_test(reg, reg);
+    insert_test8(reg, reg);
     insert_jump_if_not_zero_flag(target_if_true);
   }
 

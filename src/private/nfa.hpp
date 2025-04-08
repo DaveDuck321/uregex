@@ -1,11 +1,13 @@
 #pragma once
 
+#include "private/allocation.hpp"
 #include "private/character_categories.hpp"
 #include "private/meta.hpp"
 #include "private/small_set.hpp"
 
 #include <cstddef>
 #include <memory>
+#include <sys/mman.h>
 #include <vector>
 
 namespace uregex {
@@ -54,7 +56,6 @@ struct Edge {
 
 struct Node {
   size_t index;
-  size_t incoming_edges;
   Condition condition;
   std::vector<Edge> edges;
 };
@@ -67,8 +68,8 @@ enum class Counter {
 struct RegexGraphImpl {
   std::vector<std::unique_ptr<Node>> all_nodes;
   std::vector<Counter> counters;
-  std::unique_ptr<uint8_t[]> initial_state;
-  std::unique_ptr<uint8_t[]> current_state;
+  AlignedData initial_state;
+  AlignedData current_state;
   Node const *entry;
   Node const *match;
   size_t number_of_groups;

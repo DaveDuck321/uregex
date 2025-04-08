@@ -605,7 +605,7 @@ constexpr auto atom_class_to(Atom::CharacterClass input) -> T {
 
 constexpr auto allocate_node(std::vector<std::unique_ptr<Node>> &all_nodes,
                              Condition condition) -> Node * {
-  all_nodes.emplace_back(new Node{all_nodes.size(), 0, condition, {}});
+  all_nodes.emplace_back(new Node{all_nodes.size(), condition, {}});
   return all_nodes.back().get();
 }
 
@@ -724,7 +724,6 @@ auto merge_fragments(Fragment &lhs, Fragment &rhs) -> Fragment {
       for (auto &group : input.end_groups) {
         end_groups.insert(group);
       }
-      input.node->incoming_edges += 1;
       previous_output.node->edges.push_back({
           .output_index = input.node->index,
           .start_groups = input.start_groups,
@@ -796,7 +795,6 @@ auto build_piece_fragment(Piece const &piece,
             for (auto &input : atom_fragment.inputs) {
               input.counters.insert(counter);
               for (auto &output : atom_fragment.outputs) {
-                input.node->incoming_edges += 1;
                 output.node->edges.push_back({
                     .output_index = input.node->index,
                     .start_groups = input.start_groups,
@@ -816,7 +814,6 @@ auto build_piece_fragment(Piece const &piece,
             for (auto &input : atom_fragment.inputs) {
               input.counters.insert(counter);
               for (auto &output : atom_fragment.outputs) {
-                input.node->incoming_edges += 1;
                 output.node->edges.push_back({
                     .output_index = input.node->index,
                     .start_groups = input.start_groups,
@@ -944,8 +941,8 @@ auto uregex::parse(std::string_view regex_string) -> RegexGraph {
   auto graph = std::unique_ptr<RegexGraphImpl>(new RegexGraphImpl{
       .all_nodes = std::move(all_nodes),
       .counters = std::move(all_counters),
-      .initial_state = nullptr,
-      .current_state = nullptr,
+      .initial_state = AlignedData{nullptr},
+      .current_state = AlignedData{nullptr},
       .entry = entry_node,
       .match = match_node,
       .number_of_groups = number_of_groups,

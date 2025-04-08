@@ -217,8 +217,7 @@ struct EvaluationState {
 
   explicit EvaluationState(RegexGraphImpl const &);
 
-  static auto preallocate_initial_state(RegexGraphImpl const &)
-      -> std::unique_ptr<uint8_t[]>;
+  static auto preallocate_initial_state(RegexGraphImpl const &) -> AlignedData;
   auto calculate_match_result(MatchResult &, StateAtIndex *current_state,
                               RegexGraphImpl const &, std::string_view text)
       -> bool;

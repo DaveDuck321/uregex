@@ -94,25 +94,26 @@ inline auto replace_if_better(StateAtIndex &state_to_update,
 } // namespace
 
 EvaluationState::EvaluationState(RegexGraphImpl const &graph)
-    : m_storage{graph.current_state.get()}, m_state_1{graph, m_storage},
+    : m_storage{graph.current_state.data()}, m_state_1{graph, m_storage},
       m_state_2{graph,
                 m_storage + StateAtIndex::required_allocation_size(graph)} {
-  ::memcpy(m_storage, graph.initial_state.get(),
+  ::memcpy(m_storage, graph.initial_state.data(),
            2 * StateAtIndex::required_allocation_size(graph));
 }
 
 auto EvaluationState::preallocate_initial_state(const RegexGraphImpl &graph)
-    -> std::unique_ptr<uint8_t[]> {
+    -> AlignedData {
   size_t const node_count = graph.all_nodes.size();
   size_t const counters = graph.counters.size();
   size_t const number_of_groups = graph.number_of_groups;
 
   size_t const allocation_size = StateAtIndex::required_allocation_size(graph);
 
-  auto storage = std::make_unique<uint8_t[]>(2 * allocation_size);
+  auto storage = AlignedData(2 * allocation_size);
 
-  auto state_1 = StateAtIndex{graph, storage.get()};
-  auto state_2 = StateAtIndex{graph, storage.get() + allocation_size};
+  auto state_1 = StateAtIndex{graph, storage.data()};
+  auto state_2 = StateAtIndex{graph, storage.data() + allocation_size};
+
   ::memset(state_1.groups, -1,
            StateAtIndex::group_allocation_size(node_count, number_of_groups));
   ::memset(state_1.counters, 0,

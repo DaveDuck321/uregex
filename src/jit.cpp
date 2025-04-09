@@ -54,13 +54,9 @@ auto compile_commit_new_state(
                                  edge.output_index,
                          /*src=*/current_index);
 
-  auto const &non_zero_counters =
-      analyser.get_non_zero_counters(edge.output_index);
-  auto const &maybe_set_groups =
-      analyser.get_maybe_set_groups(edge.output_index);
-
   // - Commit each counter
-  for (size_t counter_index : non_zero_counters) {
+  for (size_t counter_index :
+       analyser.get_non_zero_counters(edge.output_index)) {
     size_t const current_state_counter_offset =
         StateAtIndex::counter_offset(graph) +
         sizeof(CounterType) *
@@ -75,8 +71,7 @@ auto compile_commit_new_state(
     bool is_next_incremented = edge.counters.contains(counter_index + 1);
     bool is_final = counter_index + 1 == graph.counters.size();
 
-    if (not analyser.get_non_zero_counters(current_state)
-                .contains(counter_index)) {
+    if (analyser.is_counter_zero(current_state, counter_index)) {
       builder.attach_label(commit_from_counter_labels[counter_index]);
       if (is_incremented) {
         builder.insert_store_imm32(next_state_base_reg,
@@ -121,7 +116,8 @@ auto compile_commit_new_state(
   // 2) Commit new groups
   static constexpr auto tmp_group = CallingConvention::temporary[0];
 
-  for (size_t group_index : maybe_set_groups) {
+  for (size_t group_index = 0; group_index < graph.number_of_groups;
+       group_index += 1) {
     size_t const current_state_group_offset =
         StateAtIndex::group_offset(graph) +
         sizeof(Group) * (graph.number_of_groups * current_state + group_index);
@@ -130,8 +126,21 @@ auto compile_commit_new_state(
         sizeof(Group) *
             (graph.number_of_groups * edge.output_index + group_index);
 
-    if (not edge.start_groups.contains(group_index) &&
-        not edge.end_groups.contains(group_index)) {
+    auto const does_start_group = edge.start_groups.contains(group_index);
+    auto const does_end_group = edge.end_groups.contains(group_index);
+    auto const is_start_group_unset =
+        analyser.is_group_start_unset(edge.output_index, group_index);
+    auto const is_end_group_unset =
+        analyser.is_group_end_unset(edge.output_index, group_index);
+
+    auto const is_src_group_start_unset =
+        analyser.is_group_start_unset(current_state, group_index);
+    auto const is_src_group_end_unset =
+        analyser.is_group_end_unset(current_state, group_index);
+
+    if (not(does_start_group || does_end_group || is_start_group_unset ||
+            is_end_group_unset || is_src_group_start_unset ||
+            is_src_group_end_unset)) {
       // Common case where we're not touching this group, copy over the entire
       // struct atomically.
       builder.insert_load64(tmp_group, current_state_base_reg,
@@ -142,31 +151,48 @@ auto compile_commit_new_state(
       continue;
     }
 
-    if (edge.start_groups.contains(group_index)) {
+    if (does_start_group) {
       builder.insert_store32(/*dst_base=*/next_state_base_reg,
-                             /*dst_offset=*/next_state_group_offset,
+                             /*dst_offset=*/next_state_group_offset +
+                                 offsetof(Group, start_index),
                              /*src=*/current_index);
     } else {
-      builder.insert_load32(tmp_group, current_state_base_reg,
-                            current_state_group_offset);
-      builder.insert_store32(/*dst_base=*/next_state_base_reg,
-                             /*dst_offset=*/next_state_group_offset,
-                             /*src=*/tmp_group);
+      if (not is_start_group_unset && is_src_group_start_unset) {
+        builder.insert_store64_simm32(/*dst_base=*/next_state_base_reg,
+                                      /*dst_offset=*/next_state_group_offset +
+                                          offsetof(Group, start_index),
+                                      -1);
+      } else if (not is_start_group_unset) {
+        builder.insert_load32(tmp_group, current_state_base_reg,
+                              current_state_group_offset +
+                                  offsetof(Group, start_index));
+        builder.insert_store32(/*dst_base=*/next_state_base_reg,
+                               /*dst_offset=*/next_state_group_offset +
+                                   offsetof(Group, start_index),
+                               /*src=*/tmp_group);
+      }
     }
 
-    if (edge.end_groups.contains(group_index)) {
+    if (does_end_group) {
       builder.insert_store32(/*dst_base=*/next_state_base_reg,
                              /*dst_offset=*/next_state_group_offset +
-                                 sizeof(Group::start_index),
+                                 offsetof(Group, end_index),
                              /*src=*/current_index);
     } else {
-      builder.insert_load32(tmp_group, current_state_base_reg,
-                            current_state_group_offset +
-                                sizeof(Group::start_index));
-      builder.insert_store32(/*dst_base=*/next_state_base_reg,
-                             /*dst_offset=*/next_state_group_offset +
-                                 sizeof(Group::start_index),
-                             /*src=*/tmp_group);
+      if (not is_end_group_unset && is_src_group_end_unset) {
+        builder.insert_store64_simm32(/*dst_base=*/next_state_base_reg,
+                                      /*dst_offset=*/next_state_group_offset +
+                                          offsetof(Group, end_index),
+                                      -1);
+      } else if (not is_end_group_unset) {
+        builder.insert_load32(tmp_group, current_state_base_reg,
+                              current_state_group_offset +
+                                  offsetof(Group, end_index));
+        builder.insert_store32(/*dst_base=*/next_state_base_reg,
+                               /*dst_offset=*/next_state_group_offset +
+                                   offsetof(Group, end_index),
+                               /*src=*/tmp_group);
+      }
     }
   }
 }

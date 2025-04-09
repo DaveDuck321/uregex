@@ -63,6 +63,7 @@ struct Label {
 
 struct Fixup {
   enum class Type {
+    relative_1_byte,
     relative_4_bytes,
   };
   IndexInProgram location;
@@ -143,6 +144,13 @@ struct Assembler {
 
       for (auto fixup : label_allocation.fixups) {
         switch (fixup.type) {
+        case Fixup::Type::relative_1_byte: {
+          int32_t const offset = dest_location - (fixup.location + 1);
+          assert(-128 <= offset && offset <= 127);
+          assert(m_program.data[fixup.location] == 0);
+          m_program.data[fixup.location] = (uint8_t)offset;
+          break;
+        }
         case Fixup::Type::relative_4_bytes: {
           int32_t const offset = dest_location - (fixup.location + 4);
           auto to_write = std::bit_cast<std::array<uint8_t, 4>>(offset);
@@ -260,6 +268,9 @@ class FunctionBuilder {
         {program->current_offset(), type});
 
     switch (type) {
+    case Fixup::Type::relative_1_byte:
+      program->insert_byte(0);
+      break;
     case Fixup::Type::relative_4_bytes:
       program->insert_bytes({{0, 0, 0, 0}});
       break;
@@ -351,6 +362,14 @@ public:
                                     uint32_t value) -> void {
     maybe_insert_rex(dst_base);
 
+    program->insert_byte(0xc7U);
+    insert_base_offset_immediate(0, dst_base, dst_offset);
+    program->insert_immediate(value);
+  }
+
+  constexpr auto insert_store64_simm32(Register dst_base, uint32_t dst_offset,
+                                       int32_t value) -> void {
+    insert_rex(/*is_operand=*/true, dst_base);
     program->insert_byte(0xc7U);
     insert_base_offset_immediate(0, dst_base, dst_offset);
     program->insert_immediate(value);
@@ -545,7 +564,6 @@ public:
 template <typename Builder>
 constexpr auto Assembler::build_function(Label fn_label, Builder &&fn_builder)
     -> void {
-  m_program.insert_padding(16);
   attach_label(fn_label);
 
   FunctionBuilder builder{this, true};
@@ -556,7 +574,6 @@ template <typename Builder>
 constexpr auto Assembler::build_out_of_line_block(Label fn_label,
                                                   Builder &&fn_builder)
     -> void {
-  m_program.insert_padding(16);
   attach_label(fn_label);
 
   FunctionBuilder builder{this, false};

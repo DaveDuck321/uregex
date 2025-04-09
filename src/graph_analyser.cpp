@@ -9,7 +9,9 @@ using namespace uregex;
 GraphAnalyzer::GraphAnalyzer(RegexGraphImpl const &graph)
     : m_node_count{graph.all_nodes.size()},
       m_distance_map(m_node_count * m_node_count),
-      m_non_zero_counter_map(m_node_count), m_maybe_group_map(m_node_count) {
+      m_non_zero_counter_map(m_node_count),
+      m_maybe_start_group_map(m_node_count),
+      m_maybe_end_group_map(m_node_count) {
   std::fill(m_distance_map.begin(), m_distance_map.end(), ~0UL);
 
   for (size_t start_node = 0; start_node < m_node_count; start_node += 1) {
@@ -41,10 +43,10 @@ GraphAnalyzer::GraphAnalyzer(RegexGraphImpl const &graph)
           m_non_zero_counter_map[to_node].insert(counter);
         }
         for (size_t group : edge.start_groups) {
-          m_maybe_group_map[to_node].insert(group);
+          m_maybe_start_group_map[to_node].insert(group);
         }
         for (size_t group : edge.end_groups) {
-          m_maybe_group_map[to_node].insert(group);
+          m_maybe_end_group_map[to_node].insert(group);
         }
       }
     }

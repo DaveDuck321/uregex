@@ -290,8 +290,8 @@ public:
 
     if (requires_return) {
       program->insert_byte(/*ret*/ 0xc3);
+      program->insert_padding(16);
     }
-    //program->insert_padding(16);
   }
 
   constexpr auto allocate_label() -> Label {

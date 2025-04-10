@@ -429,8 +429,34 @@ auto compile_impl(std::unique_ptr<RegexGraphImpl> graph)
   GraphAnalyzer analyser{*graph};
 
   std::set<size_t> has_first_transition_to_state;
-  std::map<size_t, Label> state_evaluation_body_labels;
 
+  // The first state is special, lets compile that separately
+  Label init_entry_point = assembler.allocate_label();
+  assembler.build_function(init_entry_point, [&](auto &builder) {
+    // arg[0] = current_index
+    // arg[1] = current_state_base_addr
+    // arg[2] = next_state_base_addr
+
+    for (auto reg : CallingConvention::callee_saved) {
+      builder.mark_saved(reg);
+    }
+
+    builder.insert_mov32(current_index, CallingConvention::argument[0]);
+    builder.insert_mov64(current_state_base_reg,
+                         CallingConvention::argument[1]);
+    builder.insert_mov64(next_state_base_reg, CallingConvention::argument[2]);
+
+    for (auto const &edge : graph->entry->edges) {
+      compile_edge_transition(builder, analyser, *graph, edge,
+                              has_first_transition_to_state,
+                              graph->entry->index);
+    }
+  });
+
+  std::map<size_t, Label> state_evaluation_body_labels;
+  has_first_transition_to_state.clear();
+
+  // Every other state can be compiled separately
   std::vector<Label> state_start_labels;
   for (size_t state_id = 0; state_id < graph->all_nodes.size(); state_id += 1) {
     state_start_labels.push_back(assembler.allocate_label());
@@ -530,13 +556,18 @@ auto compile_impl(std::unique_ptr<RegexGraphImpl> graph)
 
   assembler.apply_all_fixups();
 
+  // Clear any state remaining from the c++ engine's last run
+  auto _ = evaluation::EvaluationState{*graph, true};
   auto section = ExecutableSection{assembler.m_program.data};
-  auto entry_point_ptr =
+  auto init_ptr =
+      section.get_fn_ptr<void, evaluation::IndexType, void *, void *>(
+          assembler.m_labels[+init_entry_point].location);
+  auto eval_ptr =
       section.get_fn_ptr<bool, Codepoint, evaluation::IndexType,
                          evaluation::IndexType, void *, void *, size_t>(
           assembler.m_labels[+entry_point].location);
   return std::make_unique<RegexCompiledImpl>(
-      std::move(graph), std::move(section), entry_point_ptr);
+      std::move(graph), std::move(section), init_ptr, eval_ptr);
 }
 } // namespace
 
@@ -546,10 +577,18 @@ auto uregex::compile(RegexGraph &&graph) -> RegexCompiled {
 
 auto RegexCompiledImpl::evaluate(uregex::MatchResult &result,
                                  std::string_view text) const -> bool {
-  auto all_state = evaluation::EvaluationState{*m_graph};
+  auto all_state = evaluation::EvaluationState{*m_graph, false};
+
+  //  The next (definitively unused) offset is previous + max unicode size + 1
+  size_t const current_uniform_offset = m_current_index + 5;
 
   auto *current_state = &all_state.m_state_1;
   auto *next_state = &all_state.m_state_2;
+
+  std::invoke(m_init_entrypoint, current_uniform_offset,
+              (void *)current_state->counters, (void *)next_state->counters);
+
+  std::swap(current_state, next_state);
 
   size_t current_index = 0;
   size_t lookahead_buffer = 0;
@@ -569,13 +608,15 @@ auto RegexCompiledImpl::evaluate(uregex::MatchResult &result,
                sizeof(lookahead_buffer));
 
       auto did_accept_any_state = std::invoke(
-          m_entrypoint, codepoint, current_index,
-          current_index + codepoint_size, (void *)current_state->counters,
-          (void *)next_state->counters, lookahead_buffer);
+          m_eval_entrypoint, codepoint, current_uniform_offset + current_index,
+          current_uniform_offset + current_index + codepoint_size,
+          (void *)current_state->counters, (void *)next_state->counters,
+          lookahead_buffer);
 
       if (not did_accept_any_state) {
+        m_current_index = current_uniform_offset + current_index;
         return all_state.calculate_match_result(result, next_state, *m_graph,
-                                                text);
+                                                text, current_uniform_offset);
       }
 
       current_index += codepoint_size;
@@ -592,20 +633,24 @@ copy_final_subword:
         parse_utf8_char(sub_unchecked(text, current_index), codepoint_size);
 
     auto did_accept_any_state = std::invoke(
-        m_entrypoint, codepoint, current_index, current_index + codepoint_size,
+        m_eval_entrypoint, codepoint, current_uniform_offset + current_index,
+        current_uniform_offset + current_index + codepoint_size,
         (void *)current_state->counters, (void *)next_state->counters,
         lookahead_buffer);
 
     lookahead_buffer >>= 8U * codepoint_size;
 
     if (not did_accept_any_state) {
+      m_current_index = current_uniform_offset + current_index;
       return all_state.calculate_match_result(result, next_state, *m_graph,
-                                              text);
+                                              text, current_uniform_offset);
     }
 
     current_index += codepoint_size;
     std::swap(current_state, next_state);
   }
-  return all_state.calculate_match_result(result, current_state, *m_graph,
-                                          text);
+
+  m_current_index = current_uniform_offset + current_index;
+  return all_state.calculate_match_result(result, current_state, *m_graph, text,
+                                          current_uniform_offset);
 }

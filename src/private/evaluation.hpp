@@ -215,12 +215,12 @@ struct EvaluationState {
   StateAtIndex m_state_1;
   StateAtIndex m_state_2;
 
-  explicit EvaluationState(RegexGraphImpl const &);
+  explicit EvaluationState(RegexGraphImpl const &, bool do_init = true);
 
   static auto preallocate_initial_state(RegexGraphImpl const &) -> AlignedData;
   auto calculate_match_result(MatchResult &, StateAtIndex *current_state,
-                              RegexGraphImpl const &, std::string_view text)
-      -> bool;
+                              RegexGraphImpl const &, std::string_view text,
+                              size_t offset = 0) -> bool;
 };
 
 constexpr auto sub_unchecked(std::string_view view, size_t start_index)

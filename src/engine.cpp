@@ -93,12 +93,14 @@ inline auto replace_if_better(StateAtIndex &state_to_update,
 
 } // namespace
 
-EvaluationState::EvaluationState(RegexGraphImpl const &graph)
+EvaluationState::EvaluationState(RegexGraphImpl const &graph, bool do_init)
     : m_storage{graph.current_state.data()}, m_state_1{graph, m_storage},
       m_state_2{graph,
                 m_storage + StateAtIndex::required_allocation_size(graph)} {
-  ::memcpy(m_storage, graph.initial_state.data(),
-           2 * StateAtIndex::required_allocation_size(graph));
+  if (do_init) {
+    ::memcpy(m_storage, graph.initial_state.data(),
+             2 * StateAtIndex::required_allocation_size(graph));
+  }
 }
 
 auto EvaluationState::preallocate_initial_state(const RegexGraphImpl &graph)
@@ -138,10 +140,12 @@ auto EvaluationState::preallocate_initial_state(const RegexGraphImpl &graph)
 auto EvaluationState::calculate_match_result(MatchResult &result,
                                              StateAtIndex *current_state,
                                              RegexGraphImpl const &graph,
-                                             std::string_view text) -> bool {
+                                             std::string_view text,
+                                             size_t offset) -> bool {
   result.text = text;
   result.groups.clear();
-  if (current_state->counters_for(graph.match->index)[0] != text.size()) {
+  if (current_state->counters_for(graph.match->index)[0] !=
+      text.size() + offset) {
     result.did_match = false;
     return false;
   }
@@ -153,12 +157,12 @@ auto EvaluationState::calculate_match_result(MatchResult &result,
   for (size_t group_id = 0; group_id < graph.number_of_groups; group_id += 1) {
     auto const &group = groups[group_id];
     if (group.start_index != max_index && group.end_index != max_index) {
-      result.groups.push_back(
-          MatchResult::Group{group.start_index, group.end_index});
+      result.groups.push_back(MatchResult::Group{group.start_index - offset,
+                                                 group.end_index - offset});
     } else if (group.end_index != max_index) {
       // Zero length match
-      result.groups.push_back(
-          MatchResult::Group{group.end_index, group.end_index});
+      result.groups.push_back(MatchResult::Group{group.end_index - offset,
+                                                 group.end_index - offset});
     } else {
       // Unmatched group
       assert(group.start_index == max_index);

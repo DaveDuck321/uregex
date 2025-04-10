@@ -6,58 +6,20 @@
 
 #include <cstdint>
 #include <memory>
-#include <mutex>
-#include <sys/mman.h>
 
 namespace uregex {
 namespace jit {
-class JITDumper {
-  std::mutex m_jitdump_body;
-  size_t m_regex_index;
-  void *m_mapped_region;
-  int m_fd;
-
-public:
-  JITDumper();
-  JITDumper(JITDumper const &) = delete;
-  auto operator=(JITDumper const &) -> JITDumper & = delete;
-  ~JITDumper();
-  auto record_load(std::span<uint8_t const> data, void *loaded_to) -> void;
-};
-
 class ExecutableSection {
   void *m_executable;
   size_t m_size;
 
 public:
-  explicit ExecutableSection(std::span<uint8_t const> data)
-      : m_executable{nullptr}, m_size{data.size()} {
-    // Map the binary as exec-only
-    int fd = ::memfd_create("exec_section", 0);
-    ::write(fd, data.data(), data.size());
-    m_executable =
-        ::mmap(nullptr, data.size(), PROT_EXEC | PROT_READ, MAP_PRIVATE, fd, 0);
-    m_size = data.size();
-    ::close(fd);
-
-#ifdef JITDUMP_PROFILE
-    static JITDumper dumper{};
-    dumper.record_load(data, m_executable);
-#endif
-  }
+  explicit ExecutableSection(std::span<uint8_t const> data);
   ExecutableSection(ExecutableSection const &) = delete;
-  ExecutableSection(ExecutableSection &&other)
-      : m_executable{other.m_executable}, m_size{other.m_size} {
-    other.m_executable = nullptr;
-    other.m_size = 0;
-  }
+  ExecutableSection(ExecutableSection &&other);
 
   auto operator=(ExecutableSection const &) -> ExecutableSection & = delete;
-  ~ExecutableSection() {
-    if (m_executable != nullptr) {
-      ::munmap(m_executable, m_size);
-    }
-  }
+  ~ExecutableSection();
 
   template <typename Ret, typename... Args>
   auto get_fn_ptr(size_t offset) -> Ret (*)(Args...) {
@@ -68,16 +30,21 @@ public:
 } // namespace jit
 
 struct RegexCompiledImpl {
-  using EntryPointFn = bool (*)(Codepoint, evaluation::IndexType,
-                                evaluation::IndexType, void *, void *, size_t);
+  using InitFn = void (*)(evaluation::IndexType, void *, void *);
+  using EvalFn = bool (*)(Codepoint, evaluation::IndexType,
+                          evaluation::IndexType, void *, void *, size_t);
   std::unique_ptr<RegexGraphImpl> m_graph;
   jit::ExecutableSection m_executable;
-  EntryPointFn m_entrypoint;
+  InitFn m_init_entrypoint;
+  EvalFn m_eval_entrypoint;
+
+  mutable size_t m_current_index = 0;
 
   RegexCompiledImpl(std::unique_ptr<RegexGraphImpl> graph,
-                    jit::ExecutableSection &&section, EntryPointFn fn)
+                    jit::ExecutableSection &&section, InitFn init_fn,
+                    EvalFn eval_fn)
       : m_graph{std::move(graph)}, m_executable{std::move(section)},
-        m_entrypoint{fn} {};
+        m_init_entrypoint{init_fn}, m_eval_entrypoint{eval_fn} {};
 
   auto evaluate(MatchResult &result, std::string_view text) const -> bool;
 };

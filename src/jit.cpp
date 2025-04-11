@@ -100,7 +100,6 @@ auto compile_commit_new_state(
 
     builder.attach_label(commit_from_counter_labels[counter_index]);
 
-    // TODO: maybe just issue an add with a memory operand?
     builder.insert_load32(computed_counter_value, current_state_base_reg,
                           current_state_counter_offset);
 
@@ -252,7 +251,6 @@ auto compile_edge_transition(FunctionBuilder &builder,
         sizeof(CounterType) * ((graph.counters.size() + 1) * edge.output_index +
                                counter_index + 1);
 
-    // TODO: maybe just issue an add with a memory operand?
     builder.insert_load32(computed_counter_value, current_state_base_reg,
                           current_state_counter_offset);
 
@@ -314,10 +312,7 @@ struct CheckCondition {
     // Cheat by evaluating as many characters as possible simultaneously, this
     // will avoid spurious node activations later in the chain.
     std::string character_chain;
-    std::vector<size_t> cumulative_length;
-
     codepoint_to_utf8(character_chain, condition);
-    cumulative_length.push_back(character_chain.size());
 
     auto *next_node = node;
     while (next_node->edges.size() == 1) {
@@ -328,10 +323,7 @@ struct CheckCondition {
 
       codepoint_to_utf8(character_chain,
                         std::get<Codepoint>(next_node->condition.type));
-      cumulative_length.push_back(character_chain.size());
     }
-
-    auto const minimum_required_compare_size = cumulative_length[0];
 
     if (character_chain.size() >= sizeof(uint64_t) && !jump_on_pass) {
       // Multi-character
@@ -344,11 +336,6 @@ struct CheckCondition {
       uint32_t compare_imm = 0;
       ::memcpy(&compare_imm, character_chain.data(), sizeof(uint32_t));
       builder->insert_cmp_r32_imm32(lookahead_buffer, compare_imm);
-    } else if (minimum_required_compare_size == sizeof(uint8_t)) {
-      // ASCII compare
-      uint8_t compare_imm = 0;
-      ::memcpy(&compare_imm, character_chain.data(), sizeof(uint8_t));
-      builder->insert_cmp_r8_imm8(lookahead_buffer, compare_imm);
     } else {
       // Slowpath utf-8 compare
       builder->insert_cmp_r32_imm32(codepoint, condition.value);
@@ -577,49 +564,51 @@ auto uregex::compile(RegexGraph &&graph) -> RegexCompiled {
 
 auto RegexCompiledImpl::evaluate(uregex::MatchResult &result,
                                  std::string_view text) const -> bool {
+  result.text = text;
+  result.groups.clear();
+  result.did_match = false;
+
   auto all_state = evaluation::EvaluationState{*m_graph, false};
 
   //  The next (definitively unused) offset is previous + max unicode size + 1
   size_t const current_uniform_offset = m_current_index + 5;
+  size_t const end_index = current_uniform_offset + text.size();
+  char const *text_cursor = text.data();
+  size_t current_index = current_uniform_offset;
 
   auto *current_state = &all_state.m_state_1;
   auto *next_state = &all_state.m_state_2;
 
-  std::invoke(m_init_entrypoint, current_uniform_offset,
-              (void *)current_state->counters, (void *)next_state->counters);
+  std::invoke(m_init_entrypoint, current_index, (void *)current_state->counters,
+              (void *)next_state->counters);
 
   std::swap(current_state, next_state);
 
-  size_t current_index = 0;
   size_t lookahead_buffer = 0;
-  if (text.size() < sizeof(lookahead_buffer)) {
+  if (current_index + sizeof(lookahead_buffer) > end_index) {
     ::memcpy(&lookahead_buffer, text.data(), text.size());
     goto copy_final_subword;
   }
 
   {
-    std::string_view remaining_text = text;
     size_t codepoint_size = 0;
-    while (remaining_text.size() >= sizeof(lookahead_buffer)) {
-      remaining_text = sub_unchecked(text, current_index);
-      Codepoint codepoint = parse_utf8_char(remaining_text, codepoint_size);
+    while (current_index + sizeof(lookahead_buffer) <= end_index) {
+      Codepoint codepoint = parse_utf8_char(text_cursor, codepoint_size);
 
-      ::memcpy(&lookahead_buffer, remaining_text.data(),
-               sizeof(lookahead_buffer));
+      ::memcpy(&lookahead_buffer, text_cursor, sizeof(lookahead_buffer));
 
-      auto did_accept_any_state = std::invoke(
-          m_eval_entrypoint, codepoint, current_uniform_offset + current_index,
-          current_uniform_offset + current_index + codepoint_size,
+      auto did_accept_any_state = m_eval_entrypoint(
+          codepoint, current_index, current_index + codepoint_size,
           (void *)current_state->counters, (void *)next_state->counters,
           lookahead_buffer);
 
-      if (not did_accept_any_state) {
-        m_current_index = current_uniform_offset + current_index;
-        return all_state.calculate_match_result(result, next_state, *m_graph,
-                                                text, current_uniform_offset);
+      if (not did_accept_any_state) [[unlikely]] {
+        m_current_index = current_index;
+        return false;
       }
 
       current_index += codepoint_size;
+      text_cursor += codepoint_size;
       std::swap(current_state, next_state);
     }
 
@@ -627,30 +616,28 @@ auto RegexCompiledImpl::evaluate(uregex::MatchResult &result,
   }
 
 copy_final_subword:
-  while (current_index < text.size()) {
+  while (current_index < end_index) {
     size_t codepoint_size = 0;
-    Codepoint codepoint =
-        parse_utf8_char(sub_unchecked(text, current_index), codepoint_size);
+    Codepoint codepoint = parse_utf8_char(text_cursor, codepoint_size);
 
-    auto did_accept_any_state = std::invoke(
-        m_eval_entrypoint, codepoint, current_uniform_offset + current_index,
-        current_uniform_offset + current_index + codepoint_size,
+    auto did_accept_any_state = m_eval_entrypoint(
+        codepoint, current_index, current_index + codepoint_size,
         (void *)current_state->counters, (void *)next_state->counters,
         lookahead_buffer);
 
     lookahead_buffer >>= 8U * codepoint_size;
 
-    if (not did_accept_any_state) {
-      m_current_index = current_uniform_offset + current_index;
-      return all_state.calculate_match_result(result, next_state, *m_graph,
-                                              text, current_uniform_offset);
+    if (not did_accept_any_state) [[unlikely]] {
+      m_current_index = current_index;
+      return false;
     }
 
     current_index += codepoint_size;
+    text_cursor += codepoint_size;
     std::swap(current_state, next_state);
   }
 
-  m_current_index = current_uniform_offset + current_index;
+  m_current_index = current_index;
   return all_state.calculate_match_result(result, current_state, *m_graph, text,
                                           current_uniform_offset);
 }

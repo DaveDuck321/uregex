@@ -459,7 +459,8 @@ constexpr auto parse_char_or_char_class(Cursor &cursor)
 
   // Normal character
   size_t size;
-  auto codepoint = parse_utf8_char(cursor.text.substr(cursor.offset), size);
+  auto codepoint =
+      parse_utf8_char(cursor.text.substr(cursor.offset).data(), size);
   cursor.offset += size;
   return {codepoint};
 }

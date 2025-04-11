@@ -186,7 +186,7 @@ auto RegexGraph::evaluate(MatchResult &result, std::string_view text) const
   while (current_index < text.size()) {
     size_t codepoint_size = 0;
     Codepoint codepoint =
-        parse_utf8_char(sub_unchecked(text, current_index), codepoint_size);
+        parse_utf8_char(text.data() + current_index, codepoint_size);
 
     for (size_t evaluating_id = 0; evaluating_id < graph.all_nodes.size();
          evaluating_id += 1) {

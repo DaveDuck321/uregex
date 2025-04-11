@@ -410,6 +410,20 @@ public:
   constexpr auto insert_cmp_r32_imm32(Register reg, uint32_t compare_to)
       -> void {
     maybe_insert_rex(reg);
+    if (compare_to <= 127) {
+      program->insert_byte(0x83);
+      insert_modrm(7, /*mod=*/0b11, reg);
+      program->insert_immediate((uint8_t)compare_to);
+    } else {
+      program->insert_byte(0x81);
+      insert_modrm(7, /*mod=*/0b11, reg);
+      program->insert_immediate(compare_to);
+    }
+  }
+
+  constexpr auto insert_cmp_r64_imm32(Register reg, uint32_t compare_to)
+      -> void {
+    insert_rex(/*is_operand=*/true, reg);
     program->insert_byte(0x81);
     insert_modrm(7, /*mod=*/0b11, reg);
     program->insert_immediate(compare_to);

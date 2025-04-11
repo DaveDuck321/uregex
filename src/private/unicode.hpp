@@ -11,8 +11,7 @@
 namespace uregex {
 struct Codepoint;
 
-constexpr auto parse_utf8_char(std::string_view text, size_t &offset)
-    -> Codepoint;
+constexpr auto parse_utf8_char(char const *text, size_t &offset) -> Codepoint;
 
 struct Codepoint {
   unsigned value;
@@ -20,7 +19,7 @@ struct Codepoint {
   constexpr Codepoint(unsigned value) : value{value} {}
   explicit constexpr Codepoint(std::string_view utf8_char) : value{0} {
     size_t parsed_bytes;
-    value = parse_utf8_char(utf8_char, parsed_bytes).value;
+    value = parse_utf8_char(utf8_char.data(), parsed_bytes).value;
     assert(parsed_bytes == parsed_bytes);
   }
 
@@ -29,8 +28,7 @@ struct Codepoint {
   static constexpr auto invalid_sentinel() -> Codepoint { return {0xfffdU}; };
 };
 
-constexpr auto parse_utf8_char(std::string_view text, size_t &offset)
-    -> Codepoint {
+constexpr auto parse_utf8_char(char const *text, size_t &offset) -> Codepoint {
   offset = 0;
   auto eat_next = [&]() -> unsigned { return (uint8_t)text[offset++]; };
 

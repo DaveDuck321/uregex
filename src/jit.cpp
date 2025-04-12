@@ -200,7 +200,8 @@ auto compile_edge_transition(FunctionBuilder &builder,
                              GraphAnalyzer const &analyser,
                              RegexGraphImpl const &graph, Edge const &edge,
                              std::set<size_t> &has_first_transition_to_state,
-                             size_t current_state) -> void {
+                             size_t current_state, Label abandon_transition)
+    -> void {
   static constexpr auto computed_counter_value =
       CallingConvention::temporary[0];
 
@@ -224,7 +225,6 @@ auto compile_edge_transition(FunctionBuilder &builder,
   }
 
   auto const commit_new_state = builder.allocate_label();
-  auto const abandon_transition = builder.allocate_label();
 
   // - The first counter is set to the current index if we've already
   // added the state at this iteration.
@@ -289,8 +289,6 @@ auto compile_edge_transition(FunctionBuilder &builder,
   builder.attach_label(commit_new_state);
   compile_commit_new_state(builder, analyser, graph, edge, current_state,
                            commit_from_counter_labels, false);
-
-  builder.attach_label(abandon_transition);
 }
 
 struct CheckCondition {
@@ -434,9 +432,11 @@ auto compile_impl(std::unique_ptr<RegexGraphImpl> graph)
     builder.insert_mov64(next_state_base_reg, CallingConvention::argument[2]);
 
     for (auto const &edge : graph->entry->edges) {
+      auto abandon_transition_label = builder.allocate_label();
       compile_edge_transition(builder, analyser, *graph, edge,
                               has_first_transition_to_state,
-                              graph->entry->index);
+                              graph->entry->index, abandon_transition_label);
+      builder.attach_label(abandon_transition_label);
     }
   });
 
@@ -524,12 +524,6 @@ auto compile_impl(std::unique_ptr<RegexGraphImpl> graph)
       // 2) If we're here, the state is active AND the condition passes.
       builder.insert_or_imm8(did_accept_any_state, 1);
 
-      for (auto const &edge : node->edges) {
-        compile_edge_transition(builder, analyser, *graph, edge,
-                                has_first_transition_to_state, state_index);
-      }
-
-      // 3) Jump back to the main dispatch block
       size_t next_state_index = state_index + 1;
       while (
           next_state_index != graph->all_nodes.size() &&
@@ -537,6 +531,23 @@ auto compile_impl(std::unique_ptr<RegexGraphImpl> graph)
               node->condition, graph->all_nodes[next_state_index]->condition)) {
         next_state_index += 1;
       }
+
+      for (auto const &edge : node->edges) {
+        bool is_final_edge = (&node->edges.back() == &edge);
+        Label abandon_transition = is_final_edge
+                                       ? state_start_labels[next_state_index]
+                                       : builder.allocate_label();
+
+        compile_edge_transition(builder, analyser, *graph, edge,
+                                has_first_transition_to_state, state_index,
+                                abandon_transition);
+
+        if (not is_final_edge) {
+          builder.attach_label(abandon_transition);
+        }
+      }
+
+      // 3) Jump back to the main dispatch block
       builder.insert_jump(state_start_labels[next_state_index]);
     });
   }

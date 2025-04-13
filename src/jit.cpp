@@ -73,14 +73,14 @@ auto compile_commit_new_state(
         sizeof(CounterType) * ((graph.counters.size() + 1) * edge.output_index +
                                counter_index + 1);
 
-    bool is_incremented = edge.counters.contains(counter_index);
-    bool is_next_incremented = edge.counters.contains(counter_index + 1);
-    bool is_next_non_zero =
+    bool const is_incremented = edge.counters.contains(counter_index);
+    bool const is_next_incremented = edge.counters.contains(counter_index + 1);
+    bool const is_next_non_zero =
         not analyser.is_counter_zero(edge.output_index, counter_index + 1);
 
-    bool is_initialized =
+    bool const is_initialized =
         not analyser.is_counter_zero(current_state, counter_index);
-    bool is_next_initialized =
+    bool const is_next_initialized =
         not analyser.is_counter_zero(current_state, counter_index + 1);
 
     builder.attach_label(commit_from_counter_labels[counter_index]);
@@ -91,8 +91,8 @@ auto compile_commit_new_state(
       continue;
     }
 
-    if (!is_incremented && !is_next_incremented && is_next_initialized &&
-        is_next_non_zero && (current_state_counter_offset % 8) == 0) {
+    if (!is_next_incremented && is_next_initialized && is_next_non_zero &&
+        (current_state_counter_offset % 8) == 0) {
       // Special case: we're just copying over both this counter AND the next
       // counter. We might as well group consecutive 4-byte copies into a single
       // 8-byte copy.
@@ -100,6 +100,9 @@ auto compile_commit_new_state(
 
       builder.insert_load64(computed_counter_value, current_state_base_reg,
                             current_state_counter_offset);
+      if (is_incremented) {
+        builder.insert_add64(computed_counter_value, 1);
+      }
       builder.insert_store64(/*dst_base=*/next_state_base_reg,
                              /*dst_offset=*/next_state_counter_offset,
                              /*src=*/computed_counter_value);
@@ -111,7 +114,7 @@ auto compile_commit_new_state(
                           current_state_counter_offset);
 
     if (is_incremented) {
-      builder.insert_add(computed_counter_value, 1);
+      builder.insert_add32(computed_counter_value, 1);
     }
 
     builder.insert_store32(/*dst_base=*/next_state_base_reg,
@@ -263,7 +266,7 @@ auto compile_edge_transition(FunctionBuilder &builder,
 
     bool is_incremented = edge.counters.contains(counter_index);
     if (is_incremented) {
-      builder.insert_add(computed_counter_value, 1);
+      builder.insert_add32(computed_counter_value, 1);
     }
 
     // test_result = next_state_counter[counter] - computed_counter

@@ -567,8 +567,20 @@ public:
     program->insert_byte(0x58 + (std::to_underlying(reg) & 0b111));
   }
 
-  constexpr auto insert_add(Register reg, uint8_t imm) -> void {
+  constexpr auto insert_add32(Register reg, uint8_t imm) -> void {
     maybe_insert_rex(reg);
+    if (imm == 1) {
+      program->insert_byte(0xff);
+      insert_modrm(0, /*mod=*/0b11, reg);
+    } else {
+      program->insert_byte(0x83);
+      insert_modrm(0, /*mod=*/0b11, reg);
+      program->insert_immediate(imm);
+    }
+  }
+
+  constexpr auto insert_add64(Register reg, uint8_t imm) -> void {
+    insert_rex(/*is_operand=*/true, reg);
     if (imm == 1) {
       program->insert_byte(0xff);
       insert_modrm(0, /*mod=*/0b11, reg);

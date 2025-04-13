@@ -1,9 +1,9 @@
-#include "private/graph_analyser.hpp"
 #include "regex/regex.hpp"
 
 #include "private/assembler.hpp"
 #include "private/character_categories.hpp"
 #include "private/evaluation.hpp"
+#include "private/graph_analyser.hpp"
 #include "private/jit.hpp"
 #include "private/nfa.hpp"
 #include "private/unicode.hpp"
@@ -12,8 +12,6 @@
 #include <cassert>
 #include <cstddef>
 #include <cstdint>
-#include <functional>
-#include <iostream>
 #include <map>
 #include <memory>
 #include <ranges>

@@ -6,7 +6,6 @@
 
 #include <cstddef>
 #include <cstdint>
-#include <memory>
 #include <string.h>
 #include <string_view>
 #include <variant>

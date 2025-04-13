@@ -79,8 +79,7 @@ struct Cursor {
 
   constexpr auto peek_or_throw(std::string_view expected) const -> char {
     if (is_at_end()) {
-      throw std::runtime_error(
-          std::format("Expected {} at offset {}, got EOF", expected, offset));
+      throw ParserError("Expected {} at offset {}, got EOF", expected, offset);
     }
     return peek();
   }
@@ -99,12 +98,11 @@ struct Cursor {
 
     // Failed! Throw an error
     if (offset >= text.size()) {
-      throw std::runtime_error(
-          std::format("Expected '{}' at offset {}, got EOF", to_eat, offset));
+      throw ParserError("Expected '{}' at offset {}, got EOF", to_eat, offset);
     }
 
-    throw std::runtime_error(std::format("Expected '{}' at offset {}, got '{}'",
-                                         to_eat, offset, peek()));
+    throw ParserError("Expected '{}' at offset {}, got '{}'", to_eat, offset,
+                      peek());
   }
 
   constexpr auto try_eat(char to_eat) -> bool {
@@ -152,7 +150,7 @@ constexpr auto parse_number(Cursor &cursor) -> unsigned {
 
 done:
   if (length == 0) {
-    throw ParserError("Expected number at offset {}"sv, cursor.offset);
+    throw ParserError("Expected number at offset {}", cursor.offset);
   }
   return result;
 }
@@ -167,17 +165,15 @@ constexpr auto parse_unicode_category(Cursor &cursor, bool is_complement)
   cursor.eat_or_throw('{');
   switch (cursor.peek_or_throw("match group type"sv)) {
   default:
-    throw std::runtime_error(
-        std::format("Unexpected character category '{}' at offset '{}'",
-                    cursor.peek(), cursor.offset));
+    throw ParserError("Unexpected character category '{}' at offset '{}'",
+                      cursor.peek(), cursor.offset);
   case 'L':
     // Letters
     cursor.eat_next();
     switch (cursor.peek_or_throw("letter type or '}'"sv)) {
     default:
-      throw std::runtime_error(
-          std::format("Unexpected character '{}' at offset '{}'", cursor.peek(),
-                      cursor.offset));
+      throw ParserError("Unexpected character '{}' at offset '{}'",
+                        cursor.peek(), cursor.offset);
     case '}':
       result.type = category::Letter{};
       break;
@@ -209,9 +205,8 @@ constexpr auto parse_unicode_category(Cursor &cursor, bool is_complement)
     cursor.eat_next();
     switch (cursor.peek_or_throw("mark type or '}'"sv)) {
     default:
-      throw std::runtime_error(
-          std::format("Unexpected character '{}' at offset '{}'", cursor.peek(),
-                      cursor.offset));
+      throw ParserError("Unexpected character '{}' at offset '{}'",
+                        cursor.peek(), cursor.offset);
     case '}':
       result.type = category::Mark{};
       break;
@@ -235,9 +230,8 @@ constexpr auto parse_unicode_category(Cursor &cursor, bool is_complement)
     cursor.eat_next();
     switch (cursor.peek_or_throw("number type or '}'"sv)) {
     default:
-      throw std::runtime_error(
-          std::format("Unexpected character '{}' at offset '{}'", cursor.peek(),
-                      cursor.offset));
+      throw ParserError("Unexpected character '{}' at offset '{}'",
+                        cursor.peek(), cursor.offset);
     case '}':
       result.type = category::Number{};
       break;
@@ -261,9 +255,8 @@ constexpr auto parse_unicode_category(Cursor &cursor, bool is_complement)
     cursor.eat_next();
     switch (cursor.peek_or_throw("punctuation type or '}'"sv)) {
     default:
-      throw std::runtime_error(
-          std::format("Unexpected character '{}' at offset '{}'", cursor.peek(),
-                      cursor.offset));
+      throw ParserError("Unexpected character '{}' at offset '{}'",
+                        cursor.peek(), cursor.offset);
     case '}':
       result.type = category::Punctuation{};
       break;
@@ -303,9 +296,8 @@ constexpr auto parse_unicode_category(Cursor &cursor, bool is_complement)
     cursor.eat_next();
     switch (cursor.peek_or_throw("separator type or '}'"sv)) {
     default:
-      throw std::runtime_error(
-          std::format("Unexpected character '{}' at offset '{}'", cursor.peek(),
-                      cursor.offset));
+      throw ParserError("Unexpected character '{}' at offset '{}'",
+                        cursor.peek(), cursor.offset);
     case '}':
       result.type = category::Separator{};
       break;
@@ -329,9 +321,8 @@ constexpr auto parse_unicode_category(Cursor &cursor, bool is_complement)
     cursor.eat_next();
     switch (cursor.peek_or_throw("symbol type or '}'"sv)) {
     default:
-      throw std::runtime_error(
-          std::format("Unexpected character '{}' at offset '{}'", cursor.peek(),
-                      cursor.offset));
+      throw ParserError("Unexpected character '{}' at offset '{}'",
+                        cursor.peek(), cursor.offset);
     case '}':
       result.type = category::Symbol{};
       break;
@@ -359,9 +350,8 @@ constexpr auto parse_unicode_category(Cursor &cursor, bool is_complement)
     cursor.eat_next();
     switch (cursor.peek_or_throw("other type or '}'"sv)) {
     default:
-      throw std::runtime_error(
-          std::format("Unexpected character '{}' at offset '{}'", cursor.peek(),
-                      cursor.offset));
+      throw ParserError("Unexpected character '{}' at offset '{}'",
+                        cursor.peek(), cursor.offset);
     case '}':
       result.type = category::Other{};
       break;
@@ -408,8 +398,7 @@ constexpr auto parse_char_or_char_class(Cursor &cursor)
     cursor.eat_next();
     switch (next_char) {
     default:
-      throw std::runtime_error(
-          std::format("Unrecognized escaped character {}", next_char));
+      throw ParserError("Unrecognized escaped character {}", next_char);
     // Regex control characters
     case '(':
     case ')':
@@ -490,9 +479,9 @@ constexpr auto parse_character_class_expression(Cursor &cursor)
       if (cursor.try_eat('-')) {
         auto next_cce1 = parse_char_or_char_class(cursor);
         if (not std::holds_alternative<Codepoint>(next_cce1)) {
-          throw std::runtime_error(std::format(
+          throw ParserError(
               "Unexpected category in char class expression at offset {}",
-              cursor.offset));
+              cursor.offset);
         }
         result.expression.push_back(
             Range{std::get<Codepoint>(cce1), std::get<Codepoint>(next_cce1)});

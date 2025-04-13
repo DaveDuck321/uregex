@@ -63,7 +63,7 @@ constexpr auto parse_utf8_char(char const *text, size_t &offset) -> Codepoint {
 
 constexpr auto codepoint_to_utf8(std::string &output, Codepoint codepoint)
     -> void {
-  if (codepoint.value <= 0x7f) {
+  if (codepoint.value <= 0x7f) [[likely]] {
     output.push_back(codepoint.value);
     return;
   }

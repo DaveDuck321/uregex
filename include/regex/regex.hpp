@@ -3,6 +3,7 @@
 #include <cassert>
 #include <format>
 #include <memory>
+#include <optional>
 #include <stdexcept>
 #include <string_view>
 #include <vector>
@@ -11,9 +12,9 @@ namespace uregex {
 class RegexError : public std::runtime_error {
 public:
   template <typename... T>
-  explicit constexpr RegexError(std::string_view fmt_string, T &&...args)
-      : std::runtime_error(std::vformat(
-            fmt_string, std::make_format_args(std::forward<T>(args)...))) {}
+  explicit constexpr RegexError(std::string_view fmt_string, T... args)
+      : std::runtime_error(
+            std::vformat(fmt_string, std::make_format_args(args...))) {}
 };
 
 class ParserError : public RegexError {

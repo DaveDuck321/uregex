@@ -5,7 +5,7 @@ A lightweight, extremely fast UTF-8 regex matching library with optional evaluat
 ## Goals
 1. Evaluation must be as-fast-as-possible -- in all cases
     1. Even without the JIT
-    2. Even with an adversarial regex -- we must be polynomial
+    2. Even with an adversarial regex -- polynomial complexity ONLY
 3. Compile time overhead must be tiny (iteration time is important).
 4. No dependencies outside of the standard library (a regex library is a primitive).
 
@@ -18,7 +18,7 @@ Note: I do not distribute the [unicode category database](https://www.unicode.or
 
 ## Usage
 
-There is no configuration, unicode is always enabled, match groups are always produced. Users can optionally call `compile()` to enable JIT evaluation for a ~2.5x performance gain during evaluation.
+There is no configuration: unicode is always enabled, match groups are always produced. Users can optionally call `compile()` to enable JIT evaluation for a ~5x performance gain during evaluation.
 
 Pull in the header:
 ```c++

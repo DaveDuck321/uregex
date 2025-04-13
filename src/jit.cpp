@@ -13,6 +13,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <functional>
+#include <iostream>
 #include <map>
 #include <memory>
 #include <ranges>
@@ -41,8 +42,7 @@ constexpr auto last_index = CallingConvention::temporary[1];
 auto compile_commit_new_state(
     FunctionBuilder &builder, GraphAnalyzer const &analyser,
     RegexGraphImpl const &graph, Edge const &edge, size_t current_state,
-    std::vector<Label> const &commit_from_counter_labels,
-    bool is_always_accepted) -> void {
+    std::vector<Label> const &commit_from_counter_labels) -> void {
   static constexpr auto computed_counter_value =
       CallingConvention::temporary[0];
 
@@ -55,8 +55,14 @@ auto compile_commit_new_state(
                          /*src=*/current_index);
 
   // - Commit each counter
+  bool skip_next = false;
   for (size_t counter_index :
        analyser.get_non_zero_counters(edge.output_index)) {
+    if (skip_next) {
+      skip_next = false;
+      continue;
+    }
+
     size_t const current_state_counter_offset =
         StateAtIndex::counter_offset(graph) +
         sizeof(CounterType) *
@@ -69,36 +75,37 @@ auto compile_commit_new_state(
 
     bool is_incremented = edge.counters.contains(counter_index);
     bool is_next_incremented = edge.counters.contains(counter_index + 1);
-    bool is_final = counter_index + 1 == graph.counters.size();
+    bool is_next_non_zero =
+        not analyser.is_counter_zero(edge.output_index, counter_index + 1);
 
-    if (analyser.is_counter_zero(current_state, counter_index)) {
-      builder.attach_label(commit_from_counter_labels[counter_index]);
-      if (is_incremented) {
-        builder.insert_store_imm32(next_state_base_reg,
-                                   next_state_counter_offset, 1);
-      } else {
-        builder.insert_xor(computed_counter_value, computed_counter_value);
-        builder.insert_store32(next_state_base_reg, next_state_counter_offset,
-                               computed_counter_value);
-      }
+    bool is_initialized =
+        not analyser.is_counter_zero(current_state, counter_index);
+    bool is_next_initialized =
+        not analyser.is_counter_zero(current_state, counter_index + 1);
+
+    builder.attach_label(commit_from_counter_labels[counter_index]);
+
+    if (not is_initialized) {
+      builder.insert_store_imm32(next_state_base_reg, next_state_counter_offset,
+                                 is_incremented ? 1 : 0);
       continue;
     }
 
-    if (!is_incremented && !is_next_incremented && is_always_accepted &&
-        !is_final) {
-      // Special case: we're not touching the counters and we're always accepted
-      // (so there are no conditional jumps into the counter copying loop).
-      // Group consecutive 32-bit copies into a single 64-bit copy.
+    if (!is_incremented && !is_next_incremented && is_next_initialized &&
+        is_next_non_zero && (current_state_counter_offset % 8) == 0) {
+      // Special case: we're just copying over both this counter AND the next
+      // counter. We might as well group consecutive 4-byte copies into a single
+      // 8-byte copy.
+      builder.attach_label(commit_from_counter_labels[counter_index + 1]);
+
       builder.insert_load64(computed_counter_value, current_state_base_reg,
                             current_state_counter_offset);
       builder.insert_store64(/*dst_base=*/next_state_base_reg,
                              /*dst_offset=*/next_state_counter_offset,
                              /*src=*/computed_counter_value);
-      counter_index += 1;
+      skip_next = true;
       continue;
     }
-
-    builder.attach_label(commit_from_counter_labels[counter_index]);
 
     builder.insert_load32(computed_counter_value, current_state_base_reg,
                           current_state_counter_offset);
@@ -220,7 +227,7 @@ auto compile_edge_transition(FunctionBuilder &builder,
   if (has_first_transition_to_state.count(edge.output_index) == 0) {
     has_first_transition_to_state.insert(edge.output_index);
     compile_commit_new_state(builder, analyser, graph, edge, current_state,
-                             commit_from_counter_labels, true);
+                             commit_from_counter_labels);
     return;
   }
 
@@ -288,7 +295,7 @@ auto compile_edge_transition(FunctionBuilder &builder,
   builder.insert_jump(abandon_transition);
   builder.attach_label(commit_new_state);
   compile_commit_new_state(builder, analyser, graph, edge, current_state,
-                           commit_from_counter_labels, false);
+                           commit_from_counter_labels);
 }
 
 struct CheckCondition {

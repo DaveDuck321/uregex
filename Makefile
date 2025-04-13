@@ -14,7 +14,8 @@ LIB_SOURCES = \
 	src/engine.cpp \
 	src/executable_section.cpp \
 	src/graph_analyser.cpp \
-	src/jit.cpp \
+	src/jit_compile.cpp \
+	src/jit_engine.cpp \
 	src/parser.cpp \
 	src/regex.cpp \
 	src/unicode.cpp \

@@ -4,6 +4,7 @@
 #include "private/character_categories.hpp"
 #include "private/meta.hpp"
 #include "private/small_set.hpp"
+#include "private/small_vector.hpp"
 
 #include <cstddef>
 #include <memory>
@@ -28,7 +29,7 @@ struct Condition {
 
   // Custom expressions can model both CharacterClasses and Codepoints. They are
   // separated out for performance reasons.
-  struct CustomExpression {
+  struct CustomExpressionImpl {
     using CustomExpressionVariant =
         meta::rename<std::variant,
                      meta::concat<CharacterClassConditions,
@@ -37,6 +38,10 @@ struct Condition {
     std::vector<CustomExpressionVariant> expressions;
     bool is_complement;
   };
+
+  // CustomExpressionImpl largest member of ConditionVariant. Store it on the
+  // heap to avoid `Condition` getting too large.
+  using CustomExpression = std::unique_ptr<CustomExpressionImpl>;
 
   using ConditionTypeList = meta::concat<
       CharacterClassConditions,
@@ -55,9 +60,7 @@ struct Edge {
 };
 
 struct Node {
-  size_t index;
-  Condition condition;
-  std::vector<Edge> edges;
+  SmallVector<Edge, 1> edges;
 };
 
 enum class Counter {
@@ -66,12 +69,13 @@ enum class Counter {
 };
 
 struct RegexGraphImpl {
-  std::vector<std::unique_ptr<Node>> all_nodes;
+  std::vector<Node> all_nodes;
+  std::vector<Condition> all_conditions;
   std::vector<Counter> counters;
   AlignedData initial_state;
   AlignedData current_state;
-  Node const *entry;
-  Node const *match;
+  size_t entry_node;
+  size_t match_node;
   size_t number_of_groups;
 };
 } // namespace uregex

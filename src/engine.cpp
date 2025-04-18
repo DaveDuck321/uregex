@@ -129,8 +129,8 @@ auto EvaluationState::preallocate_initial_state(const RegexGraphImpl &graph)
     state_1.counters_for(node_id)[0] = max_index;
   }
 
-  for (auto const &edge : graph.entry->edges) {
-    replace_if_better(state_1, state_2, graph.entry->index, graph, edge, 0);
+  for (auto const &edge : graph.all_nodes[graph.entry_node].edges) {
+    replace_if_better(state_1, state_2, graph.entry_node, graph, edge, 0);
     state_1.counters_for(edge.output_index)[0] = 0;
   }
   return storage;
@@ -143,7 +143,7 @@ auto EvaluationState::calculate_match_result(MatchResult &result,
                                              size_t offset) -> bool {
   result.text = text;
   result.groups.clear();
-  if (current_state->counters_for(graph.match->index)[0] !=
+  if (current_state->counters_for(graph.match_node)[0] !=
       text.size() + offset) {
     result.did_match = false;
     return false;
@@ -152,7 +152,7 @@ auto EvaluationState::calculate_match_result(MatchResult &result,
   // The last character was a match!
   result.did_match = true;
 
-  auto const *groups = current_state->groups_for(graph.match->index);
+  auto const *groups = current_state->groups_for(graph.match_node);
   for (size_t group_id = 0; group_id < graph.number_of_groups; group_id += 1) {
     auto const &group = groups[group_id];
     if (group.start_index != max_index && group.end_index != max_index) {
@@ -189,16 +189,16 @@ auto RegexGraph::evaluate(MatchResult &result, std::string_view text) const
 
     for (size_t evaluating_id = 0; evaluating_id < graph.all_nodes.size();
          evaluating_id += 1) {
-      auto const &evaluating_node = *graph.all_nodes[evaluating_id];
+      auto const &evaluating_node = graph.all_nodes[evaluating_id];
       if (current_state->counters_for(evaluating_id)[0] != current_index) {
         continue;
       }
 
       auto result = std::visit(
-          [&](auto condition) {
+          [&](auto const &condition) {
             return evaluate_condition(codepoint, condition);
           },
-          evaluating_node.condition.type);
+          graph.all_conditions[evaluating_id].type);
 
       if (result) {
         for (auto const &edge : evaluating_node.edges) {

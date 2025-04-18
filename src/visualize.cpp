@@ -5,6 +5,7 @@
 #include "private/nfa.hpp"
 
 #include <memory>
+#include <ranges>
 #include <set>
 #include <sstream>
 #include <string>
@@ -62,15 +63,15 @@ constexpr auto pretty_format(category::Range range) -> std::string {
   return output;
 }
 
-constexpr auto pretty_format(Condition::CustomExpression expression)
+constexpr auto pretty_format(Condition::CustomExpression const &expression)
     -> std::string {
   std::string output;
   output += "[";
-  if (expression.is_complement) {
+  if (expression->is_complement) {
     output += "^";
   }
 
-  for (auto const &condition : expression.expressions) {
+  for (auto const &condition : expression->expressions) {
     output +=
         std::visit([](auto type) { return pretty_format(type); }, condition);
   }
@@ -98,12 +99,12 @@ auto unique_node_tag(Node const *node) -> std::string {
 }
 
 auto output_subgraph(std::ostream &out_stream,
-                     std::vector<std::unique_ptr<Node>> const &all_nodes,
+                     std::vector<Node> const &all_nodes,
                      std::set<Node const *> &already_graphed,
                      Node const *to_graph) -> void {
   already_graphed.insert(to_graph);
   for (auto const &edge : to_graph->edges) {
-    auto const *node = all_nodes[edge.output_index].get();
+    auto const *node = &all_nodes[edge.output_index];
 
     std::string label;
     if (not edge.start_groups.empty()) {
@@ -128,19 +129,21 @@ auto output_subgraph(std::ostream &out_stream,
 auto visualize(RegexGraphImpl const &graph, std::ostream &out_stream) -> void {
   out_stream << "digraph {\n";
 
-  for (auto const &node : graph.all_nodes) {
+  for (auto const &[node, condition] :
+       std::ranges::views::zip(graph.all_nodes, graph.all_conditions)) {
     auto const condition_fmt = std::visit(
-        [](auto type) { return pretty_format(type); }, node->condition.type);
+        [](auto const &type) { return pretty_format(type); }, condition.type);
 
     std::stringstream label;
     label << condition_fmt;
 
-    std::print(out_stream, "  {} [label=\"{}\"]\n", unique_node_tag(node.get()),
+    std::print(out_stream, "  {} [label=\"{}\"]\n", unique_node_tag(&node),
                label.str());
   }
 
   std::set<Node const *> already_graphed;
-  output_subgraph(out_stream, graph.all_nodes, already_graphed, graph.entry);
+  output_subgraph(out_stream, graph.all_nodes, already_graphed,
+                  &graph.all_nodes[graph.entry_node]);
 
   out_stream << "}" << std::endl;
 }

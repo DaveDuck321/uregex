@@ -593,16 +593,20 @@ constexpr auto atom_class_to(Atom::CharacterClass input) -> T {
       input.type);
 }
 
-constexpr auto allocate_node(std::vector<std::unique_ptr<Node>> &all_nodes,
-                             Condition condition) -> Node * {
-  all_nodes.emplace_back(new Node{all_nodes.size(), condition, {}});
-  return all_nodes.back().get();
+constexpr auto allocate_node(std::vector<Node> &all_nodes,
+                             std::vector<Condition> &all_conditions,
+                             Condition condition) -> size_t {
+  auto node_index = all_nodes.size();
+  all_nodes.emplace_back(Node{{}});
+  all_conditions.emplace_back(std::move(condition));
+  return node_index;
 }
 
-constexpr auto allocate_node(std::vector<std::unique_ptr<Node>> &all_nodes,
-                             Atom atom) -> Node * {
+constexpr auto allocate_node(std::vector<Node> &all_nodes,
+                             std::vector<Condition> &all_conditions, Atom atom)
+    -> size_t {
   using ExpressionVariant =
-      Condition::CustomExpression::CustomExpressionVariant;
+      Condition::CustomExpressionImpl::CustomExpressionVariant;
 
   auto condition = std::visit(
       meta::Overload{
@@ -611,8 +615,8 @@ constexpr auto allocate_node(std::vector<std::unique_ptr<Node>> &all_nodes,
           [&](Atom::CharacterClass character_class) {
             return atom_class_to<Condition>(character_class);
           },
-          [&](Atom::CustomClassExpression expr) {
-            Condition::CustomExpression condition;
+          [&](Atom::CustomClassExpression const &expr) {
+            Condition::CustomExpressionImpl condition;
             condition.is_complement = expr.is_complement;
             for (auto const &expression : expr.expression) {
               ExpressionVariant expression_variant = std::visit(
@@ -626,24 +630,25 @@ constexpr auto allocate_node(std::vector<std::unique_ptr<Node>> &all_nodes,
                   expression);
               condition.expressions.push_back(std::move(expression_variant));
             }
-            return Condition{condition};
+            return Condition{std::make_unique<Condition::CustomExpressionImpl>(
+                std::move(condition))};
           },
           [&](Regex) -> Condition { assert(!"Unreachable"); }},
       atom.type);
 
-  return allocate_node(all_nodes, condition);
+  return allocate_node(all_nodes, all_conditions, std::move(condition));
 }
 
 // Node tree building
 struct Fragment {
   struct Input {
-    Node *node;
+    size_t node_index;
     SmallSet<uint32_t> start_groups;
     SmallSet<uint32_t> end_groups;
     SmallSet<uint32_t> counters;
   };
   struct Output {
-    Node *node;
+    size_t node_index;
     SmallSet<uint32_t> end_groups;
   };
   struct Passthrough {
@@ -656,12 +661,13 @@ struct Fragment {
   std::vector<Passthrough> passthrough;
 };
 
-auto build_fragment(Regex const &regex,
-                    std::vector<std::unique_ptr<Node>> &all_nodes,
+auto build_fragment(Regex const &regex, std::vector<Node> &all_nodes,
+                    std::vector<Condition> &all_conditions,
                     std::vector<Counter> &all_counters, size_t &groups)
     -> Fragment;
 
-auto merge_fragments(Fragment &lhs, Fragment &rhs) -> Fragment {
+auto merge_fragments(std::vector<Node> &all_nodes, Fragment &lhs, Fragment &rhs)
+    -> Fragment {
   std::vector<Fragment::Input> new_inputs = lhs.inputs;
   std::vector<Fragment::Output> new_outputs = rhs.outputs;
   std::vector<Fragment::Passthrough> new_passthroughs;
@@ -714,8 +720,9 @@ auto merge_fragments(Fragment &lhs, Fragment &rhs) -> Fragment {
       for (auto &group : input.end_groups) {
         end_groups.insert(group);
       }
-      previous_output.node->edges.push_back({
-          .output_index = input.node->index,
+
+      all_nodes[previous_output.node_index].edges.emplace_back(Edge{
+          .output_index = input.node_index,
           .start_groups = input.start_groups,
           .end_groups = std::move(end_groups),
           .counters = input.counters,
@@ -730,14 +737,14 @@ auto merge_fragments(Fragment &lhs, Fragment &rhs) -> Fragment {
   };
 }
 
-auto build_atom_fragment(Atom const &atom,
-                         std::vector<std::unique_ptr<Node>> &all_nodes,
+auto build_atom_fragment(Atom const &atom, std::vector<Node> &all_nodes,
+                         std::vector<Condition> &all_conditions,
                          std::vector<Counter> &all_counters, size_t &groups)
     -> Fragment {
   if (std::holds_alternative<Regex>(atom.type)) {
     size_t group = groups++;
     auto nested_fragment = build_fragment(std::get<Regex>(atom.type), all_nodes,
-                                          all_counters, groups);
+                                          all_conditions, all_counters, groups);
 
     // Assign the new group id to all boundary nodes
     for (auto &input : nested_fragment.inputs) {
@@ -753,24 +760,24 @@ auto build_atom_fragment(Atom const &atom,
     return nested_fragment;
   }
 
-  auto *node = allocate_node(all_nodes, atom);
+  auto node_index = allocate_node(all_nodes, all_conditions, atom);
   return {
       .inputs = {{
-          .node = node,
+          .node_index = node_index,
           .start_groups = {},
           .end_groups = {},
           .counters = {},
       }},
       .outputs = {{
-          .node = node,
+          .node_index = node_index,
           .end_groups = {},
       }},
       .passthrough = {},
   };
 }
 
-auto build_piece_fragment(Piece const &piece,
-                          std::vector<std::unique_ptr<Node>> &all_nodes,
+auto build_piece_fragment(Piece const &piece, std::vector<Node> &all_nodes,
+                          std::vector<Condition> &all_conditions,
                           std::vector<Counter> &all_counters, size_t &groups)
     -> Fragment {
   Counter match_type =
@@ -778,15 +785,15 @@ auto build_piece_fragment(Piece const &piece,
   return std::visit(
       meta::Overload{
           [&](Quantifier::NoneOrMore) {
-            auto atom_fragment = build_atom_fragment(piece.atom, all_nodes,
-                                                     all_counters, groups);
+            auto atom_fragment = build_atom_fragment(
+                piece.atom, all_nodes, all_conditions, all_counters, groups);
             size_t counter = all_counters.size();
             all_counters.push_back(match_type);
             for (auto &input : atom_fragment.inputs) {
               input.counters.insert(counter);
               for (auto &output : atom_fragment.outputs) {
-                output.node->edges.push_back({
-                    .output_index = input.node->index,
+                all_nodes[output.node_index].edges.emplace_back(Edge{
+                    .output_index = input.node_index,
                     .start_groups = input.start_groups,
                     .end_groups = input.end_groups + output.end_groups,
                     .counters = input.counters,
@@ -797,15 +804,15 @@ auto build_piece_fragment(Piece const &piece,
             return atom_fragment;
           },
           [&](Quantifier::OneOrMore) {
-            auto atom_fragment = build_atom_fragment(piece.atom, all_nodes,
-                                                     all_counters, groups);
+            auto atom_fragment = build_atom_fragment(
+                piece.atom, all_nodes, all_conditions, all_counters, groups);
             size_t counter = all_counters.size();
             all_counters.push_back(match_type);
             for (auto &input : atom_fragment.inputs) {
               input.counters.insert(counter);
               for (auto &output : atom_fragment.outputs) {
-                output.node->edges.push_back({
-                    .output_index = input.node->index,
+                all_nodes[output.node_index].edges.emplace_back(Edge{
+                    .output_index = input.node_index,
                     .start_groups = input.start_groups,
                     .end_groups = input.end_groups + output.end_groups,
                     .counters = input.counters,
@@ -819,17 +826,17 @@ auto build_piece_fragment(Piece const &piece,
             fragment.passthrough = {{}};
 
             for (size_t i = 0; i < range.lower; i += 1) {
-              auto next_fragment = build_atom_fragment(piece.atom, all_nodes,
-                                                       all_counters, groups);
-              fragment = merge_fragments(fragment, next_fragment);
+              auto next_fragment = build_atom_fragment(
+                  piece.atom, all_nodes, all_conditions, all_counters, groups);
+              fragment = merge_fragments(all_nodes, fragment, next_fragment);
             }
 
             std::optional<size_t> counter = std::nullopt;
             std::vector<Fragment::Output> final_outputs;
             std::vector<Fragment::Passthrough> final_passthroughs;
             for (size_t i = range.lower; i < range.upper; i += 1) {
-              auto next_fragment = build_atom_fragment(piece.atom, all_nodes,
-                                                       all_counters, groups);
+              auto next_fragment = build_atom_fragment(
+                  piece.atom, all_nodes, all_conditions, all_counters, groups);
               if (not counter.has_value()) {
                 counter = all_counters.size();
                 all_counters.push_back(match_type);
@@ -843,7 +850,7 @@ auto build_piece_fragment(Piece const &piece,
               for (auto &passthrough : fragment.passthrough) {
                 final_passthroughs.push_back(passthrough);
               }
-              fragment = merge_fragments(fragment, next_fragment);
+              fragment = merge_fragments(all_nodes, fragment, next_fragment);
             }
 
             for (auto &output : final_outputs) {
@@ -857,8 +864,8 @@ auto build_piece_fragment(Piece const &piece,
       piece.quantifier.type);
 }
 
-auto build_fragment(Regex const &regex,
-                    std::vector<std::unique_ptr<Node>> &all_nodes,
+auto build_fragment(Regex const &regex, std::vector<Node> &all_nodes,
+                    std::vector<Condition> &all_conditions,
                     std::vector<Counter> &all_counters, size_t &groups)
     -> Fragment {
   std::vector<Fragment> branch_fragments;
@@ -867,9 +874,10 @@ auto build_fragment(Regex const &regex,
     previous_fragment.passthrough = {{}};
 
     for (auto const &piece : branch.pieces) {
-      auto piece_fragment =
-          build_piece_fragment(piece, all_nodes, all_counters, groups);
-      previous_fragment = merge_fragments(previous_fragment, piece_fragment);
+      auto piece_fragment = build_piece_fragment(
+          piece, all_nodes, all_conditions, all_counters, groups);
+      previous_fragment =
+          merge_fragments(all_nodes, previous_fragment, piece_fragment);
     }
 
     branch_fragments.push_back(std::move(previous_fragment));
@@ -898,43 +906,47 @@ auto uregex::parse(std::string_view regex_string) -> RegexGraph {
   auto regex = parse_regex(cursor);
 
   // Convert into node graph
-  std::vector<std::unique_ptr<Node>> all_nodes;
+  std::vector<Node> all_nodes;
+  std::vector<Condition> all_conditions;
   std::vector<Counter> all_counters;
   size_t number_of_groups = 0;
-  auto *entry_node = allocate_node(all_nodes, {Condition::Entry{}});
+  auto entry_node =
+      allocate_node(all_nodes, all_conditions, {Condition::Entry{}});
   auto entry_fragment = Fragment{
-      .inputs = {Fragment::Input{.node = entry_node,
+      .inputs = {Fragment::Input{.node_index = entry_node,
                                  .start_groups = {},
                                  .end_groups = {},
                                  .counters = {}}},
-      .outputs = {Fragment::Output{.node = entry_node, .end_groups = {}}},
+      .outputs = {Fragment::Output{.node_index = entry_node, .end_groups = {}}},
       .passthrough = {},
   };
 
-  auto regex_fragment =
-      build_fragment(regex, all_nodes, all_counters, number_of_groups);
+  auto regex_fragment = build_fragment(regex, all_nodes, all_conditions,
+                                       all_counters, number_of_groups);
 
-  auto *match_node = allocate_node(all_nodes, {Condition::Match{}});
+  auto match_node =
+      allocate_node(all_nodes, all_conditions, {Condition::Match{}});
   auto match_fragment = Fragment{
-      .inputs = {Fragment::Input{.node = match_node,
+      .inputs = {Fragment::Input{.node_index = match_node,
                                  .start_groups = {},
                                  .end_groups = {},
                                  .counters = {}}},
-      .outputs = {Fragment::Output{.node = match_node, .end_groups = {}}},
+      .outputs = {Fragment::Output{.node_index = match_node, .end_groups = {}}},
       .passthrough = {},
   };
 
-  auto result = merge_fragments(entry_fragment, regex_fragment);
-  result = merge_fragments(result, match_fragment);
+  auto result = merge_fragments(all_nodes, entry_fragment, regex_fragment);
+  result = merge_fragments(all_nodes, result, match_fragment);
   assert(result.passthrough.empty());
 
   auto graph = std::unique_ptr<RegexGraphImpl>(new RegexGraphImpl{
       .all_nodes = std::move(all_nodes),
+      .all_conditions = std::move(all_conditions),
       .counters = std::move(all_counters),
       .initial_state = AlignedData{nullptr},
       .current_state = AlignedData{nullptr},
-      .entry = entry_node,
-      .match = match_node,
+      .entry_node = entry_node,
+      .match_node = match_node,
       .number_of_groups = number_of_groups,
   });
   graph->initial_state =

@@ -32,7 +32,7 @@ GraphAnalyzer::GraphAnalyzer(RegexGraphImpl const &graph)
   std::queue<std::pair<NodeIndex, EndGroupIndex>> remaining_end_groups;
 
   for (auto const &node : graph.all_nodes) {
-    for (auto const &edge : node->edges) {
+    for (auto const &edge : node.edges) {
       for (auto counter : edge.counters) {
         remaining_counters.emplace(edge.output_index, counter);
         m_non_zero_counter_map[edge.output_index].insert(counter);
@@ -52,7 +52,7 @@ GraphAnalyzer::GraphAnalyzer(RegexGraphImpl const &graph)
     auto [node_index, counter_index] = remaining_counters.front();
     remaining_counters.pop();
 
-    for (auto const &edge : graph.all_nodes[node_index.value]->edges) {
+    for (auto const &edge : graph.all_nodes[node_index.value].edges) {
       if (not m_non_zero_counter_map[edge.output_index].contains(
               counter_index.value)) {
         m_non_zero_counter_map[edge.output_index].insert(counter_index.value);
@@ -65,7 +65,7 @@ GraphAnalyzer::GraphAnalyzer(RegexGraphImpl const &graph)
     auto [node_index, start_group_index] = remaining_start_groups.front();
     remaining_start_groups.pop();
 
-    for (auto const &edge : graph.all_nodes[node_index.value]->edges) {
+    for (auto const &edge : graph.all_nodes[node_index.value].edges) {
       if (not m_maybe_start_group_map[edge.output_index].contains(
               start_group_index.value)) {
         m_maybe_start_group_map[edge.output_index].insert(
@@ -80,7 +80,7 @@ GraphAnalyzer::GraphAnalyzer(RegexGraphImpl const &graph)
     auto [node_index, end_group_index] = remaining_end_groups.front();
     remaining_end_groups.pop();
 
-    for (auto const &edge : graph.all_nodes[node_index.value]->edges) {
+    for (auto const &edge : graph.all_nodes[node_index.value].edges) {
       if (not m_maybe_end_group_map[edge.output_index].contains(
               end_group_index.value)) {
         m_maybe_end_group_map[edge.output_index].insert(end_group_index.value);

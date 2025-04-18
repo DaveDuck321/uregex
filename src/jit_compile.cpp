@@ -300,7 +300,7 @@ auto compile_edge_transition(FunctionBuilder &builder,
 struct CheckCondition {
   FunctionBuilder *builder;
   RegexGraphImpl const *graph;
-  Node const *node;
+  size_t start_index;
 
   auto operator()(category::Any const &, Label target, bool jump_on_pass)
       -> void {
@@ -318,15 +318,17 @@ struct CheckCondition {
     std::string character_chain;
     codepoint_to_utf8(character_chain, condition);
 
-    auto *next_node = node;
-    while (next_node->edges.size() == 1) {
-      next_node = graph->all_nodes[next_node->edges[0].output_index].get();
-      if (not std::holds_alternative<Codepoint>(next_node->condition.type)) {
+    auto next_index = start_index;
+    while (graph->all_nodes[next_index].edges.size() == 1) {
+      next_index = graph->all_nodes[next_index].edges[0].output_index;
+      if (not std::holds_alternative<Codepoint>(
+              graph->all_conditions[next_index].type)) {
         break;
       }
 
-      codepoint_to_utf8(character_chain,
-                        std::get<Codepoint>(next_node->condition.type));
+      codepoint_to_utf8(
+          character_chain,
+          std::get<Codepoint>(graph->all_conditions[next_index].type));
     }
 
     if (character_chain.size() >= sizeof(uint64_t) && !jump_on_pass) {
@@ -355,9 +357,9 @@ struct CheckCondition {
   auto operator()(Condition::CustomExpression const &custom_expression,
                   Label target_if_failed, bool jump_on_pass) -> void {
     assert(not jump_on_pass);
-    if (custom_expression.is_complement) {
+    if (custom_expression->is_complement) {
       // [^ab] fails if either a or b passes
-      for (auto const &part : custom_expression.expressions) {
+      for (auto const &part : custom_expression->expressions) {
         std::visit(
             [&](auto const &condition) {
               return (*this)(condition, target_if_failed,
@@ -371,10 +373,10 @@ struct CheckCondition {
     // [ab] passes if either a or b passes
     auto pass_target = builder->allocate_label();
     for (auto const &[index, part] :
-         std::views::enumerate(custom_expression.expressions)) {
+         std::views::enumerate(custom_expression->expressions)) {
       std::visit(
           [&](auto const &condition) {
-            if ((size_t)index + 1 == custom_expression.expressions.size()) {
+            if ((size_t)index + 1 == custom_expression->expressions.size()) {
               // We're the last expression, we should fallthrough like a normal
               // condition
               return (*this)(condition, target_if_failed,
@@ -438,11 +440,11 @@ auto compile_impl(std::unique_ptr<RegexGraphImpl> graph)
                          CallingConvention::argument[1]);
     builder.insert_mov64(next_state_base_reg, CallingConvention::argument[2]);
 
-    for (auto const &edge : graph->entry->edges) {
+    for (auto const &edge : graph->all_nodes[graph->entry_node].edges) {
       auto abandon_transition_label = builder.allocate_label();
       compile_edge_transition(builder, analyser, *graph, edge,
-                              has_first_transition_to_state,
-                              graph->entry->index, abandon_transition_label);
+                              has_first_transition_to_state, graph->entry_node,
+                              abandon_transition_label);
       builder.attach_label(abandon_transition_label);
     }
   });
@@ -492,11 +494,11 @@ auto compile_impl(std::unique_ptr<RegexGraphImpl> graph)
 
     builder.insert_xor(did_accept_any_state, did_accept_any_state);
 
-    for (auto const &[state_index, node] :
-         std::views::enumerate(graph->all_nodes)) {
+    for (size_t state_index = 0; state_index < graph->all_nodes.size();
+         state_index += 1) {
       builder.attach_label(node_start_labels[state_index]);
-      if (std::holds_alternative<Condition::Entry>(node->condition.type) ||
-          std::holds_alternative<Condition::Match>(node->condition.type)) {
+      if (state_index == graph->entry_node ||
+          state_index == graph->match_node) {
         // No need to codegen anything for the placeholder states
         continue;
       }
@@ -520,37 +522,38 @@ auto compile_impl(std::unique_ptr<RegexGraphImpl> graph)
   // Insert the bodies for the out-of-line state evaluation
   for (auto const [state_index, label] :
        std::ranges::views::enumerate(node_body_labels)) {
-    auto const *node = graph->all_nodes[state_index].get();
+    auto const &condition = graph->all_conditions[state_index];
 
-    if (std::holds_alternative<Condition::Entry>(node->condition.type) ||
-        std::holds_alternative<Condition::Match>(node->condition.type)) {
+    if ((size_t)state_index == graph->entry_node ||
+        (size_t)state_index == graph->match_node) {
       // No need to codegen anything for the placeholder states
       continue;
     }
 
     assembler.build_out_of_line_block(label, [&](auto &builder) {
       // 1) Evaluate our condition
-      CheckCondition condition_overloads{&builder, graph.get(), node};
+      CheckCondition condition_overloads{&builder, graph.get(),
+                                         (size_t)state_index};
       std::visit(
           [&](auto const &condition) {
             condition_overloads(condition, node_start_labels[state_index + 1],
                                 /*jump_on_pass=*/false);
           },
-          node->condition.type);
+          condition.type);
 
       // 2) If we're here, the state is active AND the condition passes.
       builder.insert_or_imm8(did_accept_any_state, 1);
 
       size_t next_state_index = state_index + 1;
-      while (
-          next_state_index != graph->all_nodes.size() &&
-          are_mutually_exclusive(
-              node->condition, graph->all_nodes[next_state_index]->condition)) {
+      while (next_state_index != graph->all_nodes.size() &&
+             are_mutually_exclusive(&condition,
+                                    &graph->all_conditions[next_state_index])) {
         next_state_index += 1;
       }
 
-      for (auto const &edge : node->edges) {
-        bool is_final_edge = (&node->edges.back() == &edge);
+      auto const &node = graph->all_nodes[state_index];
+      for (auto const &edge : node.edges) {
+        bool is_final_edge = (&node.edges.back() == &edge);
         Label abandon_transition = is_final_edge
                                        ? node_start_labels[next_state_index]
                                        : builder.allocate_label();

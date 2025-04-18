@@ -638,18 +638,18 @@ constexpr auto allocate_node(std::vector<std::unique_ptr<Node>> &all_nodes,
 struct Fragment {
   struct Input {
     Node *node;
-    SmallSet<size_t> start_groups;
-    SmallSet<size_t> end_groups;
-    SmallSet<size_t> counters;
+    SmallSet<uint32_t> start_groups;
+    SmallSet<uint32_t> end_groups;
+    SmallSet<uint32_t> counters;
   };
   struct Output {
     Node *node;
-    SmallSet<size_t> end_groups;
+    SmallSet<uint32_t> end_groups;
   };
   struct Passthrough {
-    SmallSet<size_t> start_groups;
-    SmallSet<size_t> end_groups;
-    SmallSet<size_t> counters;
+    SmallSet<uint32_t> start_groups;
+    SmallSet<uint32_t> end_groups;
+    SmallSet<uint32_t> counters;
   };
   std::vector<Input> inputs;
   std::vector<Output> outputs;
@@ -710,14 +710,14 @@ auto merge_fragments(Fragment &lhs, Fragment &rhs) -> Fragment {
   // Stitch the input of this fragment to the output of the last fragment
   for (auto &previous_output : lhs.outputs) {
     for (auto &input : rhs.inputs) {
-      SmallSet<size_t> end_groups = previous_output.end_groups;
+      SmallSet<uint32_t> end_groups = previous_output.end_groups;
       for (auto &group : input.end_groups) {
         end_groups.insert(group);
       }
       previous_output.node->edges.push_back({
           .output_index = input.node->index,
           .start_groups = input.start_groups,
-          .end_groups = end_groups,
+          .end_groups = std::move(end_groups),
           .counters = input.counters,
       });
     }

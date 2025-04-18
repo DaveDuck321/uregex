@@ -49,9 +49,9 @@ struct Condition {
 struct Node;
 struct Edge {
   size_t output_index;
-  SmallSet<size_t> start_groups;
-  SmallSet<size_t> end_groups;
-  SmallSet<size_t> counters;
+  SmallSet<uint32_t> start_groups;
+  SmallSet<uint32_t> end_groups;
+  SmallSet<uint32_t> counters;
 };
 
 struct Node {

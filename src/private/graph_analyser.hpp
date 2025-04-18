@@ -20,8 +20,8 @@ class GraphAnalyzer {
 public:
   GraphAnalyzer(RegexGraphImpl const &graph);
 
-  [[nodiscard]] constexpr auto
-  get_non_zero_counters(size_t at_node) const -> SmallSet<uint32_t> const & {
+  [[nodiscard]] constexpr auto get_non_zero_counters(size_t at_node) const
+      -> SmallSet<uint32_t> const & {
     return m_non_zero_counter_map[at_node];
   }
 
@@ -30,13 +30,14 @@ public:
     return m_maybe_start_group_map[at_node];
   }
 
-  [[nodiscard]] constexpr auto
-  get_maybe_set_end_groups(size_t at_node) const -> SmallSet<uint32_t> const & {
+  [[nodiscard]] constexpr auto get_maybe_set_end_groups(size_t at_node) const
+      -> SmallSet<uint32_t> const & {
     return m_maybe_end_group_map[at_node];
   }
 
-  [[nodiscard]] constexpr auto
-  is_group_start_unset(size_t at_node, size_t group) const -> bool {
+  [[nodiscard]] constexpr auto is_group_start_unset(size_t at_node,
+                                                    size_t group) const
+      -> bool {
     return !get_maybe_set_start_groups(at_node).contains(group);
   }
 
